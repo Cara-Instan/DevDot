@@ -1,0 +1,5 @@
+export { default as CodeEditor } from './CodeEditor.vue'
+export { default as SplitPane } from './SplitPane.vue'
+export { default as SplitEditor } from './SplitEditor.vue'
+export * from './theme'
+export * from './languages'
