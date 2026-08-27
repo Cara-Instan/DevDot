@@ -1,10 +1,12 @@
 export * from './types'
 export * from './services/md5-service'
 export * from './services/hash-service'
+export * from './services/bcrypt-service'
+export * from './services/hash-lookup-service'
+export * from './services/aes-cipher-service'
 export * from './services/id-generator-service'
 export * from './services/jwt-service'
 export * from './handlers/crypto-handlers'
 
 export { default as HashGeneratorView } from './components/HashGeneratorView.vue'
 export { default as JwtDebuggerView } from './components/JwtDebuggerView.vue'
-

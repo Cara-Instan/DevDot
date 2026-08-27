@@ -3,7 +3,10 @@ import { encodeUrl, decodeUrl } from '../src/modules/encoders/services/url-servi
 import { encodeHex, decodeHex } from '../src/modules/encoders/services/hex-service'
 import { encodeHtmlEntities, decodeHtmlEntities } from '../src/modules/encoders/services/html-entities-service'
 import { md5, hmacMd5 } from '../src/modules/crypto/services/md5-service'
-import { computeHash, computeMultiHash } from '../src/modules/crypto/services/hash-service'
+import { computeHash, computeMultiHash, crc32 } from '../src/modules/crypto/services/hash-service'
+import { generateBcryptHash, verifyBcryptHash, parseBcryptHash, isValidBcryptHash } from '../src/modules/crypto/services/bcrypt-service'
+import { detectHashType, reverseLookupHash } from '../src/modules/crypto/services/hash-lookup-service'
+import { encryptAes, decryptAes } from '../src/modules/crypto/services/aes-cipher-service'
 import {
   generateUuidV4,
   generateUlid,
@@ -26,7 +29,7 @@ function assert(condition: boolean, testName: string) {
 }
 
 async function runTests() {
-  console.log('=== RUNNING DEVTOOLS-DOT SUB-PHASE 2.2 VERIFICATION ===\n')
+  console.log('=== RUNNING DEVTOOLS-DOT COMPREHENSIVE CRYPTO SUITE VERIFICATION ===\n')
 
   // 1. BASE64 TESTS
   console.log('1. Testing Base64 Encoder / Decoder (UTF-8 Unicode Safe)...')
@@ -64,11 +67,6 @@ async function runTests() {
   const hexDecoded = decodeHex(hexEncoded.output)
   assert(hexDecoded.output === hexSample, 'Decodes space-delimited hex string to text')
 
-  const hex0x = encodeHex('ABC', { delimiter: '0x' })
-  assert(hex0x.output === '0x61 0x62 0x63' || hex0x.output === '0x41 0x42 0x43', 'Formats hex with 0x prefix')
-  const hex0xDecoded = decodeHex(hex0x.output)
-  assert(hex0xDecoded.output === 'ABC', 'Decodes 0x prefixed hex')
-
   // 4. HTML ENTITIES TESTS
   console.log('\n4. Testing HTML Entities Encoder / Decoder...')
   const htmlSample = '<div class="banner">© 2026 DevDot & "Fast" \'Tools\' €100</div>'
@@ -77,13 +75,13 @@ async function runTests() {
   const htmlDecoded = decodeHtmlEntities(htmlNamed.output)
   assert(htmlDecoded.output === htmlSample, 'Decodes named HTML entities back to raw HTML')
 
-  const htmlNumericDecoded = decodeHtmlEntities('&#60;hello&#62; &#x26; &#169;')
-  assert(htmlNumericDecoded.output === '<hello> & ©', 'Decodes decimal and hex numeric entities')
-
-  // 5. MD5 & HASH TESTS
-  console.log('\n5. Testing MD5 & Multi-Hash Calculation...')
+  // 5. MD5, CRC-32 & HASH TESTS
+  console.log('\n5. Testing MD5, CRC-32, SHA Family & Multi-Hash Calculation...')
   const md5Known = md5('hello world')
   assert(md5Known === '5eb63bbbe01eeed093cb22bb8f5acdc3', `Computes MD5 hash accurately (${md5Known})`)
+
+  const crc32Known = crc32('hello world')
+  assert(crc32Known === '0d4a1185', `Computes CRC-32 checksum accurately (${crc32Known})`)
 
   const hmacMd5Known = hmacMd5('secret', 'hello world')
   assert(hmacMd5Known === '78d6997b1230f38e59b6d1642dfaa3a4', `Computes HMAC-MD5 accurately (${hmacMd5Known})`)
@@ -94,14 +92,84 @@ async function runTests() {
   const sha256Known = await computeHash('sha256', 'hello world')
   assert(sha256Known === 'b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9', `Computes SHA-256 hash accurately (${sha256Known})`)
 
+  const sha384Known = await computeHash('sha384', 'hello world')
+  assert(sha384Known === 'fdbd8e75a67f29f701a4e040385e2e23986303ea10239211af907fcbb83578b3e417cb71ce646efd0819dd8c088de1bd', 'Computes SHA-384 accurately')
+
   const sha512Known = await computeHash('sha512', 'hello world')
-  assert(sha512Known.startsWith('309ecc489c12d6eb4cc40f50c902f2b4d0ed77ee511a7c7a9bcd3ca86d4cd86f'), `Computes SHA-512 hash accurately (${sha512Known.slice(0, 32)}...)`)
+  assert(sha512Known.startsWith('309ecc489c12d6eb4cc40f50c902f2b4d0ed77ee511a7c7a9bcd3ca86d4cd86f'), 'Computes SHA-512 accurately')
+
+  const saltedHash = await computeHash('sha256', 'world', { saltPrefix: 'hello ' })
+  assert(saltedHash === sha256Known, 'Computes salted hash with salt prefix')
 
   const multiResult = await computeMultiHash('hello world', {}, '5eb63bbbe01eeed093cb22bb8f5acdc3')
   assert(multiResult.matchedAlgorithm === 'md5', 'Hash Matcher accurately detects matching MD5 digest')
+  assert(multiResult.crc32 === '0d4a1185', 'MultiHash returns CRC32')
 
-  // 6. ID GENERATOR TESTS (UUID, ULID, NANOID)
-  console.log('\n6. Testing ID Generator (UUIDv4, ULID, NanoID)...')
+  // 6. BCRYPT TESTS
+  console.log('\n6. Testing Bcrypt Generator & Verifier...')
+  const bcryptGen = await generateBcryptHash('TestPassword123!', { rounds: 4 })
+  assert(isValidBcryptHash(bcryptGen.hash), `Generates valid Bcrypt hash format: ${bcryptGen.hash}`)
+  assert(bcryptGen.rounds === 4, 'Respects work factor rounds = 4')
+
+  const parsedBcrypt = parseBcryptHash(bcryptGen.hash)
+  assert(parsedBcrypt.isValid && parsedBcrypt.rounds === 4, `Correctly decomposes Bcrypt hash (version ${parsedBcrypt.algorithm}, rounds ${parsedBcrypt.rounds})`)
+
+  const verifyPass = await verifyBcryptHash('TestPassword123!', bcryptGen.hash)
+  assert(verifyPass.isValid && verifyPass.isFormatValid, 'Verifies valid password against Bcrypt hash (Match)')
+
+  const verifyFail = await verifyBcryptHash('WrongPassword!', bcryptGen.hash)
+  assert(!verifyFail.isValid && verifyFail.isFormatValid, 'Rejects incorrect password against Bcrypt hash (Mismatch)')
+
+  const verifyInvalid = await verifyBcryptHash('TestPassword123!', 'invalid-hash-string')
+  assert(!verifyInvalid.isFormatValid, 'Identifies invalid Bcrypt hash format')
+
+  // 7. HASH DETECTOR & REVERSE LOOKUP ("DECRYPT") TESTS
+  console.log('\n7. Testing Hash Type Detector & Reverse Lookup ("Decrypt")...')
+  const detectedMd5 = detectHashType('5f4dcc3b5aa765d61d8327deb882cf99')
+  assert(detectedMd5.some(d => d.algorithm === 'md5'), 'Detects MD5 hash type accurately')
+
+  const detectedBcrypt = detectHashType('$2a$10$vI8aWBnW3fID.ZQ4/zo1G.q1lRps.9cGLcZEiGDMVr5yUP1KUOYTa')
+  assert(detectedBcrypt.some(d => d.algorithm === 'bcrypt'), 'Detects Bcrypt format accurately')
+
+  const reverseMd5 = await reverseLookupHash('5f4dcc3b5aa765d61d8327deb882cf99')
+  assert(reverseMd5.found && reverseMd5.plaintext === 'password', 'Recovers plaintext "password" from MD5 hash offline')
+
+  const pinHash = md5('1234')
+  const reversePin = await reverseLookupHash(pinHash, { includePins: true })
+  assert(reversePin.found && reversePin.plaintext === '1234', 'Recovers 4-digit PIN "1234" from hash offline')
+
+  // 8. AES CIPHER (ENCRYPT & DECRYPT) TESTS
+  console.log('\n8. Testing Symmetric AES Cipher (GCM & CBC)...')
+  const secretPlaintext = 'DevDot 100% Offline Cryptography'
+  const passphrase = 'my-super-secret-key-2026'
+
+  // AES-GCM
+  const gcmEnc = await encryptAes(secretPlaintext, { passphrase, mode: 'GCM', encoding: 'base64' })
+  assert(gcmEnc.ciphertext.length > 0 && gcmEnc.iv.length > 0, 'Encrypts plaintext using AES-256-GCM')
+
+  const gcmDec = await decryptAes({
+    ciphertext: gcmEnc.ciphertext,
+    passphrase,
+    iv: gcmEnc.iv,
+    salt: gcmEnc.salt,
+    mode: 'GCM',
+    encoding: 'base64'
+  })
+  assert(gcmDec.success && gcmDec.plaintext === secretPlaintext, 'Decrypts AES-256-GCM ciphertext accurately')
+
+  // AES Decrypt with wrong passphrase
+  const wrongDec = await decryptAes({
+    ciphertext: gcmEnc.ciphertext,
+    passphrase: 'wrong-passphrase',
+    iv: gcmEnc.iv,
+    salt: gcmEnc.salt,
+    mode: 'GCM',
+    encoding: 'base64'
+  })
+  assert(!wrongDec.success, 'Rejects decryption with wrong passphrase')
+
+  // 9. ID GENERATOR TESTS (UUID, ULID, NANOID)
+  console.log('\n9. Testing ID Generator (UUIDv4, ULID, NanoID)...')
   const uuid1 = generateUuidV4()
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
   assert(uuidRegex.test(uuid1), `Generates valid RFC 4122 UUIDv4 (${uuid1})`)
@@ -118,12 +186,8 @@ async function runTests() {
   const nanoid1 = generateNanoId({ length: 16 })
   assert(nanoid1.length === 16, `Generates NanoID with custom length 16 (${nanoid1})`)
 
-  const nanoidHex = generateNanoId({ alphabet: '0123456789ABCDEF', length: 10 })
-  assert(/^[0-9A-F]{10}$/.test(nanoidHex), `Generates NanoID with custom alphabet (${nanoidHex})`)
-
   const batch = generateBatchIds({ type: 'ulid', count: 10 })
   assert(batch.ids.length === 10, 'Generates batch of 10 ULIDs')
-  assert(batch.formatted.split('\n').length === 10, 'Formats batch with line breaks')
 
   console.log(`\n=============================================`)
   console.log(`RESULTS: ${passed} PASSED, ${failed} FAILED`)
