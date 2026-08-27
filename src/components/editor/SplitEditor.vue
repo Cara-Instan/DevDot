@@ -47,7 +47,7 @@ const props = withDefaults(defineProps<Props>(), {
   executionTimeMs: null,
   direction: 'horizontal',
   initialSplit: 50,
-  height: '600px',
+  height: '100%',
   showExecuteButton: false,
   executeButtonLabel: 'Transform'
 })
@@ -224,8 +224,11 @@ function handleSwap() {
   display: flex;
   flex-direction: column;
   width: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
   position: relative;
-  gap: 0.5rem;
+  gap: 0.375rem;
 }
 
 .split-editor-top-bar {

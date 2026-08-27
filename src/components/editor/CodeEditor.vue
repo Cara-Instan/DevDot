@@ -71,7 +71,7 @@ const props = withDefaults(defineProps<Props>(), {
   wordWrap: false,
   placeholder: '',
   height: '100%',
-  minHeight: '200px',
+  minHeight: '0',
   maxHeight: 'none',
   showToolbar: true,
   showStatusBar: true,
@@ -581,6 +581,10 @@ onBeforeUnmount(() => {
 .m3-code-editor-container {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  width: 100%;
+  flex: 1;
+  min-height: 0;
   background-color: var(--md-sys-color-surface-container-lowest);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-medium);

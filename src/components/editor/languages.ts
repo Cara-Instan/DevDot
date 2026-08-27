@@ -6,6 +6,11 @@ import { yaml } from '@codemirror/lang-yaml'
 import { markdown } from '@codemirror/lang-markdown'
 import { html } from '@codemirror/lang-html'
 import { css } from '@codemirror/lang-css'
+import { go } from '@codemirror/lang-go'
+import { rust } from '@codemirror/lang-rust'
+import { java } from '@codemirror/lang-java'
+import { python } from '@codemirror/lang-python'
+import { cpp } from '@codemirror/lang-cpp'
 
 export type SupportedLanguage =
   | 'json'
@@ -16,6 +21,12 @@ export type SupportedLanguage =
   | 'markdown'
   | 'html'
   | 'css'
+  | 'go'
+  | 'rust'
+  | 'java'
+  | 'python'
+  | 'csharp'
+  | 'cpp'
   | 'text'
 
 export function getLanguageExtension(lang?: string): Extension[] {
@@ -32,6 +43,26 @@ export function getLanguageExtension(lang?: string): Extension[] {
     case 'typescript':
     case 'ts':
       return [javascript({ jsx: true, typescript: true })]
+    case 'go':
+    case 'golang':
+      return [go()]
+    case 'rust':
+    case 'rs':
+      return [rust()]
+    case 'java':
+      return [java()]
+    case 'python':
+    case 'py':
+      return [python()]
+    case 'cpp':
+    case 'c++':
+    case 'c':
+    case 'csharp':
+    case 'cs':
+    case 'c#':
+    case 'kotlin':
+    case 'kt':
+      return [cpp()]
     case 'xml':
       return [xml()]
     case 'yaml':
@@ -50,3 +81,4 @@ export function getLanguageExtension(lang?: string): Extension[] {
       return []
   }
 }
+
