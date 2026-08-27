@@ -1,6 +1,7 @@
 export { default as AppLayout } from './AppLayout.vue'
 export { default as AppTopBar } from './AppTopBar.vue'
-export { default as AppNavigationRail } from './AppNavigationRail.vue'
+export { default as AppNavigationDrawer } from './AppNavigationDrawer.vue'
+export { default as AppNavigationRail } from './AppNavigationDrawer.vue'
 export { default as AppBottomNav } from './AppBottomNav.vue'
 export { default as CommandPalette } from './CommandPalette.vue'
 export { default as PrivacyDialog } from './PrivacyDialog.vue'

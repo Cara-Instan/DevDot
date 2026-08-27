@@ -63,7 +63,7 @@ Dokumen ini adalah **panduan eksekusi bertahap (Handover & Task Division)** untu
 ## 🖥️ FASE 2: Zero-Sidebar Layout, Compact TopBar & Tool Switcher
 **Tujuan:** Menghapus sidebar permanen, merampingkan header (~40px), dan mengintegrasikan TopBar Tool Switcher Dropdown & On-Demand Flyout Drawer.
 
-- [ ] **2.1 Rampingkan TopBar Desktop (`src/components/layout/AppTopBar.vue`)**
+- [x] **2.1 Rampingkan TopBar Desktop (`src/components/layout/AppTopBar.vue`)**
   - Kurangi tinggi TopBar ke standar titlebar desktop (~40-44px).
   - Hapus badge "100% Offline" dan tombol "Panic Clear" dari header utama (karena sudah ada di Settings).
   - Susun tata letak compact:
@@ -71,12 +71,12 @@ Dokumen ini adalah **panduan eksekusi bertahap (Handover & Task Division)** untu
     - **Tengah**: Tombol trigger Quick Search (`Ctrl + K`).
     - **Kanan**: Tombol Snapshot (.toolkit), Tombol Ikon Pengaturan (Gear/Settings), Tombol Quick Theme Switcher.
 
-- [ ] **2.2 Transformasi Sidebar Menjadi On-Demand Slide-Over Flyout (`src/components/layout/AppNavigationDrawer.vue`)**
+- [x] **2.2 Transformasi Sidebar Menjadi On-Demand Slide-Over Flyout (`src/components/layout/AppNavigationDrawer.vue`)**
   - Ubah `AppNavigationRail.vue` menjadi drawer melayang (*slide-over flyout*) yang hanya muncul saat tombol menu ditekan atau via shortcut.
   - Drawer menutup otomatis (*auto-dismiss*) saat pengguna memilih sebuah tool atau mengklik area luar (backdrop).
   - Hilangkan ruang kosong horizontal permanen (0px width lost) agar workspace editor dapat melebar 100% secara default.
 
-- [ ] **2.3 Perbarui Shell Layout (`src/components/layout/AppLayout.vue`)**
+- [x] **2.3 Perbarui Shell Layout (`src/components/layout/AppLayout.vue`)**
   - Pastikan container utama menggunakan lebar penuh (`width: 100%`) tanpa margin/padding sidebar default.
 
 - **Kriteria Selesai (DoD 2):**

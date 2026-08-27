@@ -1,239 +1,298 @@
 <script setup lang="ts">
+import { ref, computed, nextTick } from 'vue'
+import { onClickOutside } from '@vueuse/core'
 import {
-  ShieldCheck,
+  Menu,
+  Sparkles,
+  ChevronDown,
   Search,
   Sun,
   Moon,
   Contrast,
-  Download,
-  Upload,
-  Menu,
-  Sparkles,
-  Flame,
-  Clock,
-  DownloadCloud,
-  RefreshCw,
-  Settings
+  FolderArchive,
+  Settings,
+  Check,
+  X
 } from 'lucide-vue-next'
 
-import { M3Button, M3Tooltip } from '@/components/ui'
-import { useNavigationStore, useSecurityStore, usePwaStore } from '@/stores'
+import { M3Tooltip } from '@/components/ui'
+import { useNavigationStore, ToolCategory } from '@/stores'
 import { useTheme } from '@/composables'
+import ToolIcon from './ToolIcon.vue'
 
 const navStore = useNavigationStore()
-const securityStore = useSecurityStore()
-const pwaStore = usePwaStore()
 const { isDark, themeMode, isHighContrast, setThemeMode, toggleHighContrast } = useTheme()
 
-function handleToggleNav() {
-  if (window.innerWidth <= 768) {
-    navStore.isMobileNavOpen = !navStore.isMobileNavOpen
-  } else {
-    navStore.toggleSidebarCollapsed()
+// Tool Switcher Dropdown State
+const isDropdownOpen = ref(false)
+const switcherFilter = ref('')
+const switcherInputRef = ref<HTMLInputElement | null>(null)
+const dropdownContainerRef = ref<HTMLElement | null>(null)
+const switcherCategory = ref<ToolCategory>('all')
+
+onClickOutside(dropdownContainerRef, () => {
+  isDropdownOpen.value = false
+})
+
+function toggleDropdown() {
+  isDropdownOpen.value = !isDropdownOpen.value
+  if (isDropdownOpen.value) {
+    switcherFilter.value = ''
+    switcherCategory.value = 'all'
+    nextTick(() => {
+      switcherInputRef.value?.focus()
+    })
   }
 }
+
+function handleSelectTool(toolId: string) {
+  navStore.selectTool(toolId)
+  isDropdownOpen.value = false
+  switcherFilter.value = ''
+}
+
+function handleToggleNav() {
+  navStore.toggleNavDrawer()
+}
+
+// Filtered tools for the switcher dropdown
+const switcherTools = computed(() => {
+  let list = navStore.tools
+  if (switcherCategory.value !== 'all') {
+    list = list.filter((t) => t.category === switcherCategory.value)
+  }
+  if (switcherFilter.value.trim()) {
+    const q = switcherFilter.value.toLowerCase().trim()
+    list = list.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q) ||
+        t.keywords.some((k) => k.toLowerCase().includes(q))
+    )
+  }
+  return list
+})
 </script>
 
 <template>
   <header class="top-app-bar">
-    <!-- Left: Brand & Nav Trigger -->
+    <!-- Left: Sidebar Toggle, Brand & Tool Switcher Dropdown -->
     <div class="top-bar-left">
-      <M3Tooltip :text="navStore.isSidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'">
+      <M3Tooltip text="Navigation Drawer & Tools Catalog">
         <button
           type="button"
-          class="sidebar-toggle-btn"
-          aria-label="Toggle navigation sidebar"
+          class="compact-icon-btn"
+          aria-label="Toggle navigation drawer"
           @click="handleToggleNav"
         >
-          <Menu :size="20" />
+          <Menu :size="16" />
         </button>
       </M3Tooltip>
 
-      <div class="brand-group" @click="navStore.selectTool('system-overview')">
-        <div class="brand-icon">
-          <Sparkles :size="20" />
-        </div>
-        <div class="brand-text">
-          <span class="brand-title">DevDot</span>
-          <span class="brand-subtitle">Universal Toolkit</span>
+      <!-- Tool Switcher Trigger & Popover -->
+      <div ref="dropdownContainerRef" class="tool-switcher-container">
+        <button
+          type="button"
+          class="tool-switcher-btn"
+          :class="{ 'is-open': isDropdownOpen }"
+          aria-haspopup="true"
+          :aria-expanded="isDropdownOpen"
+          @click="toggleDropdown"
+        >
+          <div class="brand-badge">
+            <Sparkles :size="14" />
+          </div>
+          <span class="brand-name">DevDot</span>
+          <span class="breadcrumb-sep">/</span>
+          <span class="active-tool-label">{{ navStore.activeTool.name }}</span>
+          <ChevronDown :size="13" class="chevron-icon" :class="{ rotated: isDropdownOpen }" />
+        </button>
+
+        <!-- Tool Switcher Dropdown Menu -->
+        <div v-if="isDropdownOpen" class="switcher-dropdown-menu" role="menu">
+          <!-- Dropdown Filter Header -->
+          <div class="switcher-header">
+            <div class="switcher-input-wrapper">
+              <Search :size="13" class="search-muted-icon" />
+              <input
+                ref="switcherInputRef"
+                v-model="switcherFilter"
+                type="text"
+                placeholder="Switch to tool..."
+                class="switcher-filter-input"
+                @keydown.esc="isDropdownOpen = false"
+              />
+              <button
+                v-if="switcherFilter"
+                type="button"
+                class="clear-btn"
+                @click="switcherFilter = ''"
+              >
+                <X :size="11" />
+              </button>
+            </div>
+
+            <!-- Fast Category Filter Chips -->
+            <div class="category-chips">
+              <button
+                type="button"
+                class="chip-btn"
+                :class="{ active: switcherCategory === 'all' }"
+                @click="switcherCategory = 'all'"
+              >
+                All
+              </button>
+              <button
+                type="button"
+                class="chip-btn"
+                :class="{ active: switcherCategory === 'json' }"
+                @click="switcherCategory = 'json'"
+              >
+                JSON
+              </button>
+              <button
+                type="button"
+                class="chip-btn"
+                :class="{ active: switcherCategory === 'crypto' }"
+                @click="switcherCategory = 'crypto'"
+              >
+                Crypto
+              </button>
+              <button
+                type="button"
+                class="chip-btn"
+                :class="{ active: switcherCategory === 'converters' }"
+                @click="switcherCategory = 'converters'"
+              >
+                Converters
+              </button>
+              <button
+                type="button"
+                class="chip-btn"
+                :class="{ active: switcherCategory === 'text' }"
+                @click="switcherCategory = 'text'"
+              >
+                Text
+              </button>
+            </div>
+          </div>
+
+          <!-- Tools List -->
+          <div class="switcher-list">
+            <button
+              v-for="tool in switcherTools"
+              :key="tool.id"
+              type="button"
+              class="switcher-item"
+              :class="{ 'is-selected': navStore.activeToolId === tool.id }"
+              role="menuitem"
+              @click="handleSelectTool(tool.id)"
+            >
+              <div class="item-icon-box">
+                <ToolIcon :name="tool.icon" :size="14" />
+              </div>
+              <div class="item-info">
+                <span class="item-title">{{ tool.name }}</span>
+                <span class="item-sub">{{ tool.category }}</span>
+              </div>
+              <Check
+                v-if="navStore.activeToolId === tool.id"
+                :size="14"
+                class="active-check-icon"
+              />
+            </button>
+
+            <div v-if="switcherTools.length === 0" class="empty-results">
+              No matching tools found
+            </div>
+          </div>
         </div>
       </div>
-
-      <!-- Privacy Status Pill -->
-      <M3Tooltip text="Zero outbound network calls. Everything executes locally.">
-        <button
-          type="button"
-          class="privacy-pill"
-          @click="navStore.openPrivacyModal()"
-        >
-          <ShieldCheck :size="14" class="privacy-icon" />
-          <span class="privacy-text">100% Offline</span>
-        </button>
-      </M3Tooltip>
-
-      <!-- Active Clipboard Auto-Purge Pill Indicator -->
-      <M3Tooltip
-        v-if="securityStore.isTimerActive"
-        :text="`Clipboard Auto-Purge in ${securityStore.remainingPurgeSeconds}s. Click to wipe now.`"
-      >
-        <button
-          type="button"
-          class="purge-timer-pill"
-          @click="securityStore.purgeClipboardNow()"
-        >
-          <Clock :size="13" class="spin-clock-icon" />
-          <span>Purge {{ securityStore.remainingPurgeSeconds }}s</span>
-        </button>
-      </M3Tooltip>
     </div>
 
-
-    <!-- Center: Global Search / Command Palette Trigger -->
+    <!-- Center: Global Quick Search Trigger (Ctrl + K) -->
     <div class="top-bar-center">
       <button
         type="button"
         class="search-trigger"
+        aria-label="Open command palette search"
         @click="navStore.openCommandPalette()"
       >
-        <Search :size="16" class="search-icon" />
-        <span class="search-label">Quick find tools or actions...</span>
+        <Search :size="13" class="search-icon" />
+        <span class="search-label">Quick find tools...</span>
         <kbd class="search-kbd">Ctrl K</kbd>
       </button>
     </div>
 
-    <!-- Right: Snapshot, Panic, PWA, & Theme Actions -->
+    <!-- Right: Snapshot, Settings & Theme Controls -->
     <div class="top-bar-right">
-      <!-- PWA Install Prompt Button (Visible when browser install prompt is available) -->
-      <div v-if="pwaStore.isInstallable && !pwaStore.isInstalled" class="action-group pwa-install-group">
-        <M3Tooltip text="Install DevDot as a standalone Desktop/Mobile PWA app">
-          <M3Button
-            variant="filled"
-            @click="pwaStore.promptInstall()"
-          >
-            <template #icon>
-              <DownloadCloud :size="16" />
-            </template>
-            <span class="btn-label-desktop">Install App</span>
-          </M3Button>
-        </M3Tooltip>
-      </div>
-
-      <!-- PWA Update Available Button -->
-      <div v-if="pwaStore.needRefresh" class="action-group pwa-update-group">
-        <M3Tooltip text="A newer offline version is available. Click to reload.">
-          <M3Button
-            variant="filled"
-            @click="pwaStore.updateApp()"
-          >
-            <template #icon>
-              <RefreshCw :size="16" class="spin-clock-icon" />
-            </template>
-            <span class="btn-label-desktop">Update Ready</span>
-          </M3Button>
-        </M3Tooltip>
-      </div>
-
-      <!-- Panic / Quick Clear Button -->
-      <div class="action-group panic-group">
-        <M3Tooltip text="Panic / Quick Clear: Wipe all storage, caches, and clipboard">
-          <button
-            type="button"
-            class="panic-btn"
-            aria-label="Panic / Quick Clear"
-            @click="securityStore.openPanicModal()"
-          >
-            <Flame :size="16" />
-            <span class="btn-label-desktop">Panic Clear</span>
-          </button>
-        </M3Tooltip>
-      </div>
+      <!-- Snapshot Manager Button -->
+      <M3Tooltip text="Session Snapshot (.toolkit) - Backup & Restore">
+        <button
+          type="button"
+          class="topbar-action-btn"
+          @click="navStore.openSnapshotModal('export')"
+        >
+          <FolderArchive :size="14" />
+          <span class="btn-text-desktop">Snapshot</span>
+        </button>
+      </M3Tooltip>
 
       <div class="v-divider" />
 
-      <!-- Snapshot Actions -->
-      <div class="action-group snapshot-group">
-        <M3Tooltip text="Export active session snapshot (.toolkit)">
-          <M3Button
-            variant="tonal"
-            @click="navStore.openSnapshotModal('export')"
-          >
-            <template #icon>
-              <Download :size="16" />
-            </template>
-            <span class="btn-label-desktop">Export</span>
-          </M3Button>
-        </M3Tooltip>
+      <!-- Quick Theme Switcher -->
+      <M3Tooltip :text="`Switch to ${isDark ? 'Light' : 'Dark'} Mode (Current: ${themeMode})`">
+        <button
+          type="button"
+          class="compact-icon-btn"
+          aria-label="Toggle theme mode"
+          @click="setThemeMode(isDark ? 'light' : 'dark')"
+        >
+          <Sun v-if="isDark" :size="15" />
+          <Moon v-else :size="15" />
+        </button>
+      </M3Tooltip>
 
-        <M3Tooltip text="Import session snapshot (.toolkit)">
-          <M3Button
-            variant="outlined"
-            @click="navStore.openSnapshotModal('import')"
-          >
-            <template #icon>
-              <Upload :size="16" />
-            </template>
-            <span class="btn-label-desktop">Import</span>
-          </M3Button>
-        </M3Tooltip>
-      </div>
-
-      <div class="v-divider" />
-
-      <!-- Theme Controls -->
-      <div class="action-group">
-        <M3Tooltip text="Toggle High Contrast Mode">
-          <M3Button
-            :variant="isHighContrast ? 'filled' : 'outlined'"
-            @click="toggleHighContrast"
-          >
-            <template #icon>
-              <Contrast :size="16" />
-            </template>
-          </M3Button>
-        </M3Tooltip>
-
-        <M3Tooltip :text="`Current Mode: ${themeMode}`">
-          <M3Button
-            variant="tonal"
-            @click="setThemeMode(isDark ? 'light' : 'dark')"
-          >
-            <template #icon>
-              <Sun v-if="isDark" :size="16" />
-              <Moon v-else :size="16" />
-            </template>
-          </M3Button>
-        </M3Tooltip>
-      </div>
+      <!-- High Contrast Toggle -->
+      <M3Tooltip text="Toggle High Contrast Mode">
+        <button
+          type="button"
+          class="compact-icon-btn"
+          :class="{ 'is-active-icon': isHighContrast }"
+          aria-label="Toggle high contrast"
+          @click="toggleHighContrast"
+        >
+          <Contrast :size="15" />
+        </button>
+      </M3Tooltip>
 
       <!-- Preferences & Settings Dialog -->
       <M3Tooltip text="Preferences & Settings">
-        <M3Button
-          variant="outlined"
-          :icon-only="true"
+        <button
+          type="button"
+          class="compact-icon-btn"
           aria-label="Open settings"
           @click="navStore.openSettings()"
         >
-          <template #icon>
-            <Settings :size="16" />
-          </template>
-        </M3Button>
+          <Settings :size="15" />
+        </button>
       </M3Tooltip>
     </div>
   </header>
 </template>
-
 
 <style scoped>
 .top-app-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 64px;
-  padding: 0 1rem;
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
+  padding: 0 0.75rem;
   width: 100%;
   max-width: 100vw;
   box-sizing: border-box;
-  overflow: hidden;
   background-color: var(--md-sys-color-surface-container);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   font-family: var(--md-sys-typescale-font-family);
@@ -241,145 +300,329 @@ function handleToggleNav() {
   position: sticky;
   top: 0;
   z-index: 50;
+  user-select: none;
 }
 
+/* Left Section */
 .top-bar-left {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
   min-width: 0;
   flex-shrink: 0;
 }
 
-.sidebar-toggle-btn {
-  display: flex;
+.compact-icon-btn {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 28px;
+  height: 28px;
   background: transparent;
-  border: none;
-  color: var(--md-sys-color-on-surface);
+  border: 1px solid transparent;
+  border-radius: var(--md-sys-shape-corner-small, 6px);
+  color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
-  padding: 0.5rem;
-  border-radius: var(--md-sys-shape-corner-small);
-  transition: background-color 0.15s ease;
-}
-
-.sidebar-toggle-btn:hover {
-  background-color: var(--md-sys-color-surface-container-high);
-}
-
-.brand-group {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  cursor: pointer;
-  user-select: none;
+  transition: all 0.15s ease;
+  padding: 0;
   flex-shrink: 0;
 }
 
-.brand-icon {
-  background: linear-gradient(135deg, var(--md-sys-color-primary) 0%, var(--md-sys-color-tertiary, #8b5cf6) 100%);
-  color: var(--md-sys-color-on-primary);
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+.compact-icon-btn:hover {
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  border-color: var(--md-sys-color-outline-variant);
+}
+
+.compact-icon-btn.is-active-icon {
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
+}
+
+/* Tool Switcher */
+.tool-switcher-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.tool-switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 28px;
+  padding: 0 0.5rem;
+  background-color: var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small, 6px);
+  color: var(--md-sys-color-on-surface);
+  font-size: 0.78125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  max-width: 300px;
+}
+
+.tool-switcher-btn:hover,
+.tool-switcher-btn.is-open {
+  background-color: var(--md-sys-color-surface-container-highest);
+  border-color: var(--md-sys-color-primary);
+}
+
+.brand-badge {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  width: 18px;
+  height: 18px;
+  background: linear-gradient(135deg, var(--md-sys-color-primary) 0%, var(--md-sys-color-tertiary, #8b5cf6) 100%);
+  color: var(--md-sys-color-on-primary);
+  border-radius: 4px;
+  flex-shrink: 0;
 }
 
-.brand-text {
+.brand-name {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--md-sys-color-on-surface);
+  font-size: 0.78125rem;
+}
+
+.breadcrumb-sep {
+  color: var(--md-sys-color-outline);
+  font-weight: 400;
+  font-size: 0.75rem;
+}
+
+.active-tool-label {
+  font-weight: 600;
+  color: var(--md-sys-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.chevron-icon {
+  color: var(--md-sys-color-on-surface-variant);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.chevron-icon.rotated {
+  transform: rotate(180deg);
+}
+
+/* Tool Switcher Dropdown Menu */
+.switcher-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  width: 320px;
+  background-color: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  z-index: 100;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: dropdown-appear 0.15s ease-out;
+}
+
+@keyframes dropdown-appear {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.switcher-header {
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  background-color: var(--md-sys-color-surface-container);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.switcher-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  background-color: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 6px;
+}
+
+.search-muted-icon {
+  color: var(--md-sys-color-on-surface-variant);
+  flex-shrink: 0;
+}
+
+.switcher-filter-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.75rem;
+  color: var(--md-sys-color-on-surface);
+  min-width: 0;
+}
+
+.clear-btn {
+  background: transparent;
+  border: none;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.category-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.chip-btn {
+  background-color: transparent;
+  border: 1px solid transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  padding: 0.15rem 0.45rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.12s ease;
+}
+
+.chip-btn:hover {
+  background-color: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+}
+
+.chip-btn.active {
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  font-weight: 600;
+}
+
+.switcher-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.switcher-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.12s ease;
+  width: 100%;
+}
+
+.switcher-item:hover {
+  background-color: var(--md-sys-color-surface-container-highest);
+}
+
+.switcher-item.is-selected {
+  background-color: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  font-weight: 600;
+}
+
+.item-icon-box {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background-color: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.switcher-item.is-selected .item-icon-box {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.item-info {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
-.brand-title {
-  font-size: 1.0625rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--md-sys-color-on-surface);
-  line-height: 1.2;
-}
-
-.brand-subtitle {
-  font-size: 0.6875rem;
+.item-title {
+  font-size: 0.75rem;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-sub {
+  font-size: 0.625rem;
   color: var(--md-sys-color-on-surface-variant);
-  letter-spacing: 0.02em;
+  text-transform: capitalize;
 }
 
-.privacy-pill {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.625rem;
-  background-color: rgba(16, 185, 129, 0.12);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
-  border-radius: 9999px;
+.active-check-icon {
+  color: var(--md-sys-color-primary);
+  flex-shrink: 0;
+}
+
+.empty-results {
+  padding: 1.25rem;
+  text-align: center;
   font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
-.privacy-pill:hover {
-  background-color: rgba(16, 185, 129, 0.2);
-}
-
-.privacy-icon {
-  flex-shrink: 0;
-}
-
-.purge-timer-pill {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.625rem;
-  background-color: rgba(239, 68, 68, 0.12);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.35);
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  cursor: pointer;
-  animation: pulse-soft 2s infinite ease-in-out;
-  transition: all 0.2s ease;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.purge-timer-pill:hover {
-  background-color: #ef4444;
-  color: #ffffff;
-}
-
-@keyframes pulse-soft {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.75; }
-}
-
+/* Center Section */
 .top-bar-center {
   flex: 1;
-  max-width: 420px;
-  margin: 0 1rem;
+  max-width: 320px;
+  margin: 0 0.75rem;
   min-width: 0;
 }
 
 .search-trigger {
   width: 100%;
+  height: 28px;
   display: flex;
   align-items: center;
-  gap: 0.625rem;
-  padding: 0.45rem 0.875rem;
+  gap: 0.5rem;
+  padding: 0 0.625rem;
   background-color: var(--md-sys-color-surface-container-high);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: 9999px;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -404,9 +647,9 @@ function handleToggleNav() {
 }
 
 .search-kbd {
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 600;
-  padding: 0.1rem 0.4rem;
+  padding: 0.05rem 0.35rem;
   background-color: var(--md-sys-color-surface);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: 4px;
@@ -415,87 +658,64 @@ function handleToggleNav() {
   flex-shrink: 0;
 }
 
+/* Right Section */
 .top-bar-right {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
   flex-shrink: 0;
 }
 
-.action-group {
-  display: flex;
+.topbar-action-btn {
+  display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-}
-
-.panic-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.45rem 0.75rem;
-  background-color: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  border-radius: 9999px;
-  font-size: 0.78125rem;
-  font-weight: 600;
+  height: 28px;
+  padding: 0 0.55rem;
+  background-color: var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small, 6px);
+  color: var(--md-sys-color-on-surface);
+  font-size: 0.75rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.panic-btn:hover {
-  background-color: #ef4444;
-  color: #ffffff;
-  border-color: #ef4444;
-  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
+.topbar-action-btn:hover {
+  background-color: var(--md-sys-color-surface-container-high);
+  border-color: var(--md-sys-color-primary);
+}
+
+.btn-text-desktop {
+  font-size: 0.75rem;
 }
 
 .v-divider {
   width: 1px;
-  height: 24px;
+  height: 18px;
   background-color: var(--md-sys-color-outline-variant);
   margin: 0 0.15rem;
 }
 
-@media (max-width: 1280px) {
-  .btn-label-desktop {
-    display: none;
-  }
-}
-
-@media (max-width: 1100px) {
-  .brand-subtitle {
-    display: none;
-  }
-
-  .top-bar-center {
-    max-width: 260px;
-    margin: 0 0.5rem;
-  }
-}
-
+/* Responsive adjustments */
 @media (max-width: 960px) {
-  .privacy-text {
-    display: none;
-  }
-
   .top-bar-center {
-    max-width: 200px;
-  }
-
-  .search-kbd {
-    display: none;
+    max-width: 220px;
   }
 }
 
 @media (max-width: 768px) {
+  .btn-text-desktop {
+    display: none;
+  }
+
   .top-bar-center {
     display: none;
   }
 
-  .snapshot-group {
-    display: none;
+  .active-tool-label {
+    max-width: 100px;
   }
 }
-
 </style>

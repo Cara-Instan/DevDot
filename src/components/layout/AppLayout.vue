@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import AppTopBar from './AppTopBar.vue'
-import AppNavigationRail from './AppNavigationRail.vue'
+import AppNavigationDrawer from './AppNavigationDrawer.vue'
 import AppBottomNav from './AppBottomNav.vue'
 import CommandPalette from './CommandPalette.vue'
 import PrivacyDialog from './PrivacyDialog.vue'
@@ -24,14 +24,14 @@ onMounted(() => {
     <AppTopBar />
 
     <div class="layout-body">
-      <!-- Navigation Rail / Sidebar -->
-      <AppNavigationRail />
-
-      <!-- Main Application Canvas -->
+      <!-- Main Application Canvas (100% Full-Width) -->
       <main class="layout-viewport" role="main">
         <slot />
       </main>
     </div>
+
+    <!-- Slide-Over Navigation Flyout Drawer (On-Demand) -->
+    <AppNavigationDrawer />
 
     <!-- Responsive Bottom Bar (Mobile) -->
     <AppBottomNav />
@@ -49,10 +49,10 @@ onMounted(() => {
 
 <style scoped>
 .app-layout-root {
-  min-height: 100vh;
+  height: 100vh;
   width: 100%;
   max-width: 100vw;
-  overflow-x: hidden;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   background-color: var(--md-sys-color-surface);
@@ -65,20 +65,27 @@ onMounted(() => {
   flex: 1;
   width: 100%;
   max-width: 100%;
-  min-height: calc(100vh - 64px);
+  height: calc(100vh - 42px);
+  min-height: 0;
   position: relative;
   overflow: hidden;
+  margin: 0;
+  padding: 0;
 }
 
 .layout-viewport {
   flex: 1;
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 1.25rem 1.5rem;
+  padding: 1rem 1.25rem;
   background-color: var(--md-sys-color-surface);
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
 }
 
 @media (max-width: 768px) {
@@ -87,5 +94,4 @@ onMounted(() => {
     padding-bottom: 5rem; /* Space for bottom nav */
   }
 }
-
 </style>

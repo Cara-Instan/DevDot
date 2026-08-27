@@ -132,6 +132,7 @@ export const useNavigationStore = defineStore('navigation', () => {
   const isSettingsOpen = ref<boolean>(false)
   const isSnapshotModalOpen = ref<boolean>(false)
   const snapshotModalTab = ref<'export' | 'import'>('export')
+  const isNavDrawerOpen = ref<boolean>(false)
   const isMobileNavOpen = ref<boolean>(false)
   const isSidebarCollapsed = ref<boolean>(loadSidebarCollapsed())
   const searchQuery = ref<string>('')
@@ -258,6 +259,7 @@ export const useNavigationStore = defineStore('navigation', () => {
     const found = ALL_TOOLS.find((t) => t.id === toolId)
     if (found) {
       activeToolId.value = toolId
+      isNavDrawerOpen.value = false
       isMobileNavOpen.value = false
       if (toolId !== 'system-overview') {
         recordRecent(toolId)
@@ -267,6 +269,21 @@ export const useNavigationStore = defineStore('navigation', () => {
 
   function setCategory(category: ToolCategory) {
     activeCategory.value = category
+  }
+
+  function openNavDrawer() {
+    isNavDrawerOpen.value = true
+    isMobileNavOpen.value = true
+  }
+
+  function closeNavDrawer() {
+    isNavDrawerOpen.value = false
+    isMobileNavOpen.value = false
+  }
+
+  function toggleNavDrawer() {
+    isNavDrawerOpen.value = !isNavDrawerOpen.value
+    isMobileNavOpen.value = isNavDrawerOpen.value
   }
 
   function openCommandPalette() {
@@ -319,6 +336,7 @@ export const useNavigationStore = defineStore('navigation', () => {
     isSettingsOpen,
     isSnapshotModalOpen,
     snapshotModalTab,
+    isNavDrawerOpen,
     isMobileNavOpen,
     isSidebarCollapsed,
     searchQuery,
@@ -338,6 +356,9 @@ export const useNavigationStore = defineStore('navigation', () => {
     isFavorite,
     recordRecent,
     toggleSidebarCollapsed,
+    openNavDrawer,
+    closeNavDrawer,
+    toggleNavDrawer,
     openCommandPalette,
     closeCommandPalette,
     toggleCommandPalette,

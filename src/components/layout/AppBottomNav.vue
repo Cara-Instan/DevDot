@@ -23,7 +23,7 @@ function handleClick(itemId: ToolCategory | 'search') {
     navStore.openCommandPalette()
   } else {
     navStore.setCategory(itemId)
-    navStore.isMobileNavOpen = true
+    navStore.openNavDrawer()
   }
 }
 </script>

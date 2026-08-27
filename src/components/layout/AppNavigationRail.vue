@@ -185,9 +185,9 @@ const isOverviewActive = computed(() => navStore.activeToolId === 'system-overvi
   border-right: 1px solid var(--md-sys-color-outline-variant);
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 64px);
+  height: calc(100vh - 42px);
   position: sticky;
-  top: 64px;
+  top: 42px;
   flex-shrink: 0;
   user-select: none;
   font-family: var(--md-sys-typescale-font-family);
