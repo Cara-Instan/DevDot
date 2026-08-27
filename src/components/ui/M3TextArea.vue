@@ -19,6 +19,7 @@ interface Props {
   readOnly?: boolean
   prefixText?: string
   suffixText?: string
+  fullWidth?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -28,7 +29,8 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   required: false,
   readOnly: false,
-  error: false
+  error: false,
+  fullWidth: true
 })
 
 const emit = defineEmits<{
@@ -66,6 +68,8 @@ const handleBlur = (event: FocusEvent) => {
   <component
     :is="componentTag"
     type="textarea"
+    class="m3-text-area"
+    :class="{ 'm3-text-area--full-width': fullWidth }"
     :value="modelValue"
     :label="label"
     :placeholder="placeholder"
@@ -91,3 +95,25 @@ const handleBlur = (event: FocusEvent) => {
     </template>
   </component>
 </template>
+
+<style scoped>
+.m3-text-area {
+  box-sizing: border-box;
+}
+
+.m3-text-area--full-width {
+  width: 100%;
+  display: block;
+}
+
+md-outlined-text-field,
+md-filled-text-field {
+  box-sizing: border-box;
+}
+
+md-outlined-text-field.m3-text-area--full-width,
+md-filled-text-field.m3-text-area--full-width {
+  width: 100%;
+  display: block;
+}
+</style>

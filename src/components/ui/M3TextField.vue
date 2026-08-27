@@ -19,6 +19,7 @@ interface Props {
   readOnly?: boolean
   prefixText?: string
   suffixText?: string
+  fullWidth?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -28,7 +29,8 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   required: false,
   readOnly: false,
-  error: false
+  error: false,
+  fullWidth: true
 })
 
 const emit = defineEmits<{
@@ -70,6 +72,8 @@ const handleKeyDown = (event: KeyboardEvent) => {
 <template>
   <component
     :is="componentTag"
+    class="m3-text-field"
+    :class="{ 'm3-text-field--full-width': fullWidth }"
     :value="modelValue"
     :label="label"
     :placeholder="placeholder"
@@ -96,3 +100,25 @@ const handleKeyDown = (event: KeyboardEvent) => {
     </template>
   </component>
 </template>
+
+<style scoped>
+.m3-text-field {
+  box-sizing: border-box;
+}
+
+.m3-text-field--full-width {
+  width: 100%;
+  display: block;
+}
+
+md-outlined-text-field,
+md-filled-text-field {
+  box-sizing: border-box;
+}
+
+md-outlined-text-field.m3-text-field--full-width,
+md-filled-text-field.m3-text-field--full-width {
+  width: 100%;
+  display: block;
+}
+</style>
