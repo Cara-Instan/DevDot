@@ -3,18 +3,34 @@ import { safeParseJson } from '../json-parser'
 import { generateTypeScript } from './typescript'
 import { generateGo } from './go'
 import { generateRust } from './rust'
+import { generateJava } from './java'
+import { generatePython } from './python'
+import { generateCSharp } from './csharp'
 import { generateJsonSchema } from './json-schema'
 
 export * from './typescript'
 export * from './go'
 export * from './rust'
+export * from './java'
+export * from './python'
+export * from './csharp'
 export * from './json-schema'
 
 /**
  * Universal JSON to Type Generator Dispatcher
  */
 export function generateTypesFromJson(payload: TypeGeneratorPayload): TypeGeneratorResult {
-  const { input, target, tsOptions, goOptions, rustOptions, schemaOptions } = payload
+  const {
+    input,
+    target,
+    tsOptions,
+    goOptions,
+    rustOptions,
+    javaOptions,
+    pythonOptions,
+    csharpOptions,
+    schemaOptions
+  } = payload
 
   const { data } = safeParseJson(input, { autoRepair: true })
 
@@ -44,6 +60,27 @@ export function generateTypesFromJson(payload: TypeGeneratorPayload): TypeGenera
       typeCount = result.typeCount
       break
     }
+    case 'java': {
+      rootName = javaOptions?.rootName || 'Root'
+      const result = generateJava(data, javaOptions)
+      code = result.code
+      typeCount = result.typeCount
+      break
+    }
+    case 'python': {
+      rootName = pythonOptions?.rootName || 'RootModel'
+      const result = generatePython(data, pythonOptions)
+      code = result.code
+      typeCount = result.typeCount
+      break
+    }
+    case 'csharp': {
+      rootName = csharpOptions?.rootName || 'Root'
+      const result = generateCSharp(data, csharpOptions)
+      code = result.code
+      typeCount = result.typeCount
+      break
+    }
     case 'json-schema': {
       rootName = schemaOptions?.title || 'GeneratedSchema'
       const result = generateJsonSchema(data, schemaOptions)
@@ -69,3 +106,4 @@ export function generateTypesFromJson(payload: TypeGeneratorPayload): TypeGenera
     }
   }
 }
+

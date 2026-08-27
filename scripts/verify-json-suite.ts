@@ -4,6 +4,9 @@ import {
   generateTypeScript,
   generateGo,
   generateRust,
+  generateJava,
+  generatePython,
+  generateCSharp,
   generateJsonSchema
 } from '../src/modules/json/services/type-generators'
 
@@ -113,8 +116,31 @@ assert(rustResult.code.includes('#[derive('), 'Generates Rust derive macros')
 assert(rustResult.code.includes('#[serde(rename = "first_name")]') || rustResult.code.includes('pub first_name: String,'), 'Generates serde field naming')
 assert(rustResult.typeCount >= 3, `Generated ${rustResult.typeCount} Rust structs`)
 
-// 6. JSON Schema Generator
-console.log('\n6. Testing JSON Schema Generator...')
+// 6. Java Generator
+console.log('\n6. Testing Java Generator...')
+const javaResult = generateJava(complexData, { rootName: 'UserProfile', style: 'record' })
+assert(javaResult.code.includes('public record UserProfile('), 'Generates Java Record')
+assert(javaResult.code.includes('Author author'), 'Generates nested Author record reference')
+assert(javaResult.code.includes('@JsonProperty("is_verified")'), 'Generates Jackson @JsonProperty annotation')
+assert(javaResult.typeCount >= 3, `Generated ${javaResult.typeCount} Java types`)
+
+// 7. Python Generator
+console.log('\n7. Testing Python Generator...')
+const pythonResult = generatePython({ ...complexData, contactEmail: 'john@example.com' }, { rootName: 'UserProfile', style: 'pydantic' })
+assert(pythonResult.code.includes('class UserProfile(BaseModel):'), 'Generates Pydantic BaseModel')
+assert(pythonResult.code.includes('author: Author'), 'Generates nested Author model reference')
+assert(pythonResult.code.includes('contact_email: str = Field(alias="contactEmail")'), 'Generates Pydantic Field alias')
+assert(pythonResult.typeCount >= 3, `Generated ${pythonResult.typeCount} Python models`)
+
+// 8. C# Generator
+console.log('\n8. Testing C# Generator...')
+const csResult = generateCSharp(complexData, { rootName: 'UserProfile', useSystemTextJson: true })
+assert(csResult.code.includes('public class UserProfile'), 'Generates C# Class')
+assert(csResult.code.includes('[JsonPropertyName("is_verified")]'), 'Generates System.Text.Json JsonPropertyName')
+assert(csResult.typeCount >= 3, `Generated ${csResult.typeCount} C# types`)
+
+// 9. JSON Schema Generator
+console.log('\n9. Testing JSON Schema Generator...')
 const schemaResult = generateJsonSchema(complexData, { title: 'UserProfileSchema', schemaDraft: 'draft-07', includeRequired: true })
 const parsedSchema = JSON.parse(schemaResult.code)
 assert(parsedSchema.$schema.includes('draft-07'), 'Generates draft-07 schema URI')
@@ -130,3 +156,4 @@ console.log(`=============================================\n`)
 if (failed > 0) {
   process.exit(1)
 }
+

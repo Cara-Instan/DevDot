@@ -44,7 +44,7 @@ export interface JsonRepairResult {
 }
 
 // Type Generator Types
-export type TargetLanguage = 'typescript' | 'go' | 'rust' | 'json-schema'
+export type TargetLanguage = 'typescript' | 'go' | 'rust' | 'java' | 'python' | 'csharp' | 'json-schema'
 
 export interface TypeScriptOptions {
   rootName: string
@@ -71,6 +71,26 @@ export interface RustOptions {
   renameAll: 'none' | 'camelCase' | 'snake_case'
 }
 
+export interface JavaOptions {
+  rootName: string
+  style: 'record' | 'class' | 'lombok'
+  useJacksonAnnotations: boolean
+  packageName?: string
+}
+
+export interface PythonOptions {
+  rootName: string
+  style: 'pydantic' | 'dataclass' | 'typeddict'
+  useSnakeCase: boolean
+}
+
+export interface CSharpOptions {
+  rootName: string
+  useSystemTextJson: boolean
+  useRecords: boolean
+  namespace?: string
+}
+
 export interface JsonSchemaOptions {
   schemaDraft: 'draft-07' | '2020-12'
   title: string
@@ -84,6 +104,9 @@ export interface TypeGeneratorPayload {
   tsOptions?: Partial<TypeScriptOptions>
   goOptions?: Partial<GoOptions>
   rustOptions?: Partial<RustOptions>
+  javaOptions?: Partial<JavaOptions>
+  pythonOptions?: Partial<PythonOptions>
+  csharpOptions?: Partial<CSharpOptions>
   schemaOptions?: Partial<JsonSchemaOptions>
 }
 

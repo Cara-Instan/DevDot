@@ -6,25 +6,23 @@ import {
   CheckCircle2
 } from 'lucide-vue-next'
 import {
-  M3Button,
-  M3TextField,
-  M3Switch,
-  M3Checkbox,
   SplitEditor
 } from '@/components'
-import { useExecutionEngine } from '@/composables'
 import { useSnapshotStore } from '@/stores'
+import { generateTypesFromJson } from '../services/type-generators'
 import type {
   TargetLanguage,
   TypeScriptOptions,
   GoOptions,
   RustOptions,
+  JavaOptions,
+  PythonOptions,
+  CSharpOptions,
   JsonSchemaOptions,
   TypeGeneratorPayload,
   TypeGeneratorResult
 } from '../types'
 
-const { execute, isExecuting } = useExecutionEngine()
 const snapshotStore = useSnapshotStore()
 
 const sampleJson = `{
@@ -71,6 +69,21 @@ const initialSaved = snapshotStore.getToolState('json-schema', {
     useOptionForNullable: true,
     renameAll: 'none' as const
   },
+  javaOptions: {
+    rootName: 'DevDotConfig',
+    style: 'record' as const,
+    useJacksonAnnotations: true
+  },
+  pythonOptions: {
+    rootName: 'DevDotConfig',
+    style: 'pydantic' as const,
+    useSnakeCase: true
+  },
+  csharpOptions: {
+    rootName: 'DevDotConfig',
+    useSystemTextJson: true,
+    useRecords: false
+  },
   schemaOptions: {
     schemaDraft: 'draft-07' as const,
     title: 'DevDotConfigSchema',
@@ -81,21 +94,63 @@ const initialSaved = snapshotStore.getToolState('json-schema', {
 
 const inputJson = ref(initialSaved.inputJson)
 const outputCode = ref(initialSaved.outputCode)
-const selectedTarget = ref<TargetLanguage>(initialSaved.selectedTarget)
+const selectedTarget = ref<TargetLanguage>(initialSaved.selectedTarget || 'typescript')
 const lastResult = ref<TypeGeneratorResult | null>(null)
 const genError = ref<string | null>(null)
 const executionTimeMs = ref<number | null>(null)
 
 // Target Options
-const tsOptions = ref<TypeScriptOptions>(initialSaved.tsOptions)
-const goOptions = ref<GoOptions>(initialSaved.goOptions)
-const rustOptions = ref<RustOptions>(initialSaved.rustOptions)
-const schemaOptions = ref<JsonSchemaOptions>(initialSaved.schemaOptions)
+const tsOptions = ref<TypeScriptOptions>(initialSaved.tsOptions || {
+  rootName: 'DevDotConfig',
+  useInterface: true,
+  exportTypes: true,
+  optionalFields: false,
+  readonlyProperties: false,
+  allOptional: false
+})
+const goOptions = ref<GoOptions>(initialSaved.goOptions || {
+  rootName: 'DevDotConfig',
+  includeJsonTags: true,
+  includeYamlTags: true,
+  includeXmlTags: false,
+  omitempty: false,
+  usePointersForNullable: true
+})
+const rustOptions = ref<RustOptions>(initialSaved.rustOptions || {
+  rootName: 'DevDotConfig',
+  deriveMacros: ['Default', 'Debug', 'Clone', 'PartialEq', 'Serialize', 'Deserialize'],
+  useOptionForNullable: true,
+  renameAll: 'none' as const
+})
+const javaOptions = ref<JavaOptions>(initialSaved.javaOptions || {
+  rootName: 'DevDotConfig',
+  style: 'record',
+  useJacksonAnnotations: true
+})
+const pythonOptions = ref<PythonOptions>(initialSaved.pythonOptions || {
+  rootName: 'DevDotConfig',
+  style: 'pydantic',
+  useSnakeCase: true
+})
+const csharpOptions = ref<CSharpOptions>(initialSaved.csharpOptions || {
+  rootName: 'DevDotConfig',
+  useSystemTextJson: true,
+  useRecords: false
+})
+const schemaOptions = ref<JsonSchemaOptions>(initialSaved.schemaOptions || {
+  schemaDraft: 'draft-07',
+  title: 'DevDotConfigSchema',
+  includeRequired: true,
+  includeExamples: true
+})
+
+let isHydrating = false
 
 // Sync changes to snapshot store
 watch(
-  [inputJson, outputCode, selectedTarget, tsOptions, goOptions, rustOptions, schemaOptions],
+  [inputJson, outputCode, selectedTarget, tsOptions, goOptions, rustOptions, javaOptions, pythonOptions, csharpOptions, schemaOptions],
   () => {
+    if (isHydrating) return
     snapshotStore.setToolState('json-schema', {
       inputJson: inputJson.value,
       outputCode: outputCode.value,
@@ -103,6 +158,9 @@ watch(
       tsOptions: { ...tsOptions.value },
       goOptions: { ...goOptions.value },
       rustOptions: { ...rustOptions.value },
+      javaOptions: { ...javaOptions.value },
+      pythonOptions: { ...pythonOptions.value },
+      csharpOptions: { ...csharpOptions.value },
       schemaOptions: { ...schemaOptions.value }
     })
   },
@@ -113,7 +171,8 @@ watch(
 watch(
   () => snapshotStore.toolStates['json-schema'],
   (newState) => {
-    if (newState) {
+    if (newState && !isHydrating) {
+      isHydrating = true
       if (newState.inputJson !== undefined && newState.inputJson !== inputJson.value) {
         inputJson.value = newState.inputJson
       }
@@ -123,18 +182,14 @@ watch(
       if (newState.selectedTarget !== undefined && newState.selectedTarget !== selectedTarget.value) {
         selectedTarget.value = newState.selectedTarget
       }
-      if (newState.tsOptions) {
-        tsOptions.value = { ...newState.tsOptions }
-      }
-      if (newState.goOptions) {
-        goOptions.value = { ...newState.goOptions }
-      }
-      if (newState.rustOptions) {
-        rustOptions.value = { ...newState.rustOptions }
-      }
-      if (newState.schemaOptions) {
-        schemaOptions.value = { ...newState.schemaOptions }
-      }
+      if (newState.tsOptions) tsOptions.value = { ...newState.tsOptions }
+      if (newState.goOptions) goOptions.value = { ...newState.goOptions }
+      if (newState.rustOptions) rustOptions.value = { ...newState.rustOptions }
+      if (newState.javaOptions) javaOptions.value = { ...newState.javaOptions }
+      if (newState.pythonOptions) pythonOptions.value = { ...newState.pythonOptions }
+      if (newState.csharpOptions) csharpOptions.value = { ...newState.csharpOptions }
+      if (newState.schemaOptions) schemaOptions.value = { ...newState.schemaOptions }
+      isHydrating = false
     }
   },
   { deep: true }
@@ -144,18 +199,24 @@ const outputLanguage = computed(() => {
   switch (selectedTarget.value) {
     case 'typescript':
       return 'typescript'
+    case 'go':
+      return 'go'
+    case 'rust':
+      return 'rust'
+    case 'java':
+      return 'java'
+    case 'python':
+      return 'python'
+    case 'csharp':
+      return 'csharp'
     case 'json-schema':
       return 'json'
-    case 'go':
-      return 'text'
-    case 'rust':
-      return 'text'
     default:
       return 'text'
   }
 })
 
-async function handleGenerate() {
+function handleGenerate() {
   genError.value = null
 
   if (!inputJson.value.trim()) {
@@ -165,6 +226,7 @@ async function handleGenerate() {
     return
   }
 
+  const startTime = performance.now()
   const payload: TypeGeneratorPayload = {
     input: inputJson.value,
     target: selectedTarget.value,
@@ -174,29 +236,28 @@ async function handleGenerate() {
       ...rustOptions.value,
       deriveMacros: [...rustOptions.value.deriveMacros]
     },
+    javaOptions: { ...javaOptions.value },
+    pythonOptions: { ...pythonOptions.value },
+    csharpOptions: { ...csharpOptions.value },
     schemaOptions: { ...schemaOptions.value }
   }
 
   try {
-    const res = await execute<TypeGeneratorPayload, TypeGeneratorResult>(
-      'json',
-      'generate-types',
-      payload
-    )
-
-    if (res.success && res.result) {
-      lastResult.value = res.result
-      outputCode.value = res.result.code
-      executionTimeMs.value = res.executionTimeMs
-    } else {
-      genError.value = res.error || 'Type generation failed'
-    }
+    const res = generateTypesFromJson(payload)
+    lastResult.value = res
+    outputCode.value = res.code
+    executionTimeMs.value = Math.round((performance.now() - startTime) * 100) / 100
   } catch (err: any) {
     genError.value = err.message || 'Generation error'
   }
 }
 
-watch(selectedTarget, () => {
+function selectTarget(target: TargetLanguage) {
+  selectedTarget.value = target
+  handleGenerate()
+}
+
+watch(inputJson, () => {
   handleGenerate()
 })
 
@@ -220,221 +281,182 @@ onMounted(() => {
 
 <template>
   <div class="json-schema-container">
-    <!-- Language Selection Header -->
+    <!-- Compact 1-Line Header Toolbar -->
     <div class="schema-header-toolbar">
-      <div class="target-tabs">
-        <button
-          type="button"
-          class="target-tab-btn"
-          :class="{ active: selectedTarget === 'typescript' }"
-          @click="selectedTarget = 'typescript'"
-        >
-          <span class="lang-dot ts-dot"></span>
-          TypeScript Interface
-        </button>
+      <div class="toolbar-left">
+        <div class="target-tabs">
+          <button
+            type="button"
+            class="target-tab-btn"
+            :class="{ active: selectedTarget === 'typescript' }"
+            @click="selectTarget('typescript')"
+          >
+            <span class="lang-dot ts-dot"></span>
+            TypeScript
+          </button>
 
-        <button
-          type="button"
-          class="target-tab-btn"
-          :class="{ active: selectedTarget === 'go' }"
-          @click="selectedTarget = 'go'"
-        >
-          <span class="lang-dot go-dot"></span>
-          Go Struct
-        </button>
+          <button
+            type="button"
+            class="target-tab-btn"
+            :class="{ active: selectedTarget === 'go' }"
+            @click="selectTarget('go')"
+          >
+            <span class="lang-dot go-dot"></span>
+            Go Struct
+          </button>
 
-        <button
-          type="button"
-          class="target-tab-btn"
-          :class="{ active: selectedTarget === 'rust' }"
-          @click="selectedTarget = 'rust'"
-        >
-          <span class="lang-dot rust-dot"></span>
-          Rust Struct (Serde)
-        </button>
+          <button
+            type="button"
+            class="target-tab-btn"
+            :class="{ active: selectedTarget === 'rust' }"
+            @click="selectTarget('rust')"
+          >
+            <span class="lang-dot rust-dot"></span>
+            Rust Serde
+          </button>
 
-        <button
-          type="button"
-          class="target-tab-btn"
-          :class="{ active: selectedTarget === 'json-schema' }"
-          @click="selectedTarget = 'json-schema'"
-        >
-          <span class="lang-dot json-dot"></span>
-          JSON Schema
-        </button>
+          <button
+            type="button"
+            class="target-tab-btn"
+            :class="{ active: selectedTarget === 'java' }"
+            @click="selectTarget('java')"
+          >
+            <span class="lang-dot java-dot"></span>
+            Java Record/POJO
+          </button>
+
+          <button
+            type="button"
+            class="target-tab-btn"
+            :class="{ active: selectedTarget === 'python' }"
+            @click="selectTarget('python')"
+          >
+            <span class="lang-dot python-dot"></span>
+            Python Pydantic
+          </button>
+
+          <button
+            type="button"
+            class="target-tab-btn"
+            :class="{ active: selectedTarget === 'csharp' }"
+            @click="selectTarget('csharp')"
+          >
+            <span class="lang-dot csharp-dot"></span>
+            C# Class
+          </button>
+
+          <button
+            type="button"
+            class="target-tab-btn"
+            :class="{ active: selectedTarget === 'json-schema' }"
+            @click="selectTarget('json-schema')"
+          >
+            <span class="lang-dot json-dot"></span>
+            JSON Schema
+          </button>
+        </div>
+
+        <!-- Quick Inline Target Config -->
+        <div class="quick-config-inline">
+          <input
+            v-if="selectedTarget === 'typescript'"
+            v-model="tsOptions.rootName"
+            type="text"
+            class="compact-input"
+            placeholder="Type Name"
+            title="Root Interface / Type Name"
+            @input="handleGenerate"
+          />
+          <input
+            v-else-if="selectedTarget === 'go'"
+            v-model="goOptions.rootName"
+            type="text"
+            class="compact-input"
+            placeholder="Struct Name"
+            title="Root Struct Name"
+            @input="handleGenerate"
+          />
+          <input
+            v-else-if="selectedTarget === 'rust'"
+            v-model="rustOptions.rootName"
+            type="text"
+            class="compact-input"
+            placeholder="Struct Name"
+            title="Root Struct Name"
+            @input="handleGenerate"
+          />
+          <input
+            v-else-if="selectedTarget === 'java'"
+            v-model="javaOptions.rootName"
+            type="text"
+            class="compact-input"
+            placeholder="Class / Record Name"
+            title="Root Java Class / Record Name"
+            @input="handleGenerate"
+          />
+          <input
+            v-else-if="selectedTarget === 'python'"
+            v-model="pythonOptions.rootName"
+            type="text"
+            class="compact-input"
+            placeholder="Model Name"
+            title="Root Pydantic Model Name"
+            @input="handleGenerate"
+          />
+          <input
+            v-else-if="selectedTarget === 'csharp'"
+            v-model="csharpOptions.rootName"
+            type="text"
+            class="compact-input"
+            placeholder="Class Name"
+            title="Root C# Class Name"
+            @input="handleGenerate"
+          />
+          <input
+            v-else-if="selectedTarget === 'json-schema'"
+            v-model="schemaOptions.title"
+            type="text"
+            class="compact-input"
+            placeholder="Schema Title"
+            title="Schema Title"
+            @input="handleGenerate"
+          />
+        </div>
       </div>
 
-      <div class="header-actions">
-        <M3Button
-          variant="filled"
-          :disabled="isExecuting"
+      <div class="toolbar-right">
+        <span v-if="executionTimeMs !== null" class="exec-badge">
+          {{ executionTimeMs }} ms
+        </span>
+
+        <button
+          type="button"
+          class="compact-action-btn primary-btn"
+          :disabled="!inputJson.trim()"
           @click="handleGenerate"
         >
-          <template #icon>
-            <Sparkles :size="16" />
-          </template>
-          Generate
-        </M3Button>
+          <Sparkles :size="14" />
+          <span>Generate</span>
+        </button>
 
-        <M3Button
-          variant="text"
+        <button
+          type="button"
+          class="compact-action-btn text-btn"
           @click="handleLoadSample"
         >
           Sample
-        </M3Button>
+        </button>
 
-        <M3Button
-          variant="text"
+        <button
+          type="button"
+          class="compact-action-btn text-btn"
+          title="Clear"
           @click="handleClear"
         >
-          <template #icon>
-            <RotateCcw :size="14" />
-          </template>
-          Clear
-        </M3Button>
+          <RotateCcw :size="13" />
+          <span>Clear</span>
+        </button>
       </div>
-    </div>
-
-    <!-- Target Specific Options Panel -->
-    <div class="options-panel">
-      <!-- TypeScript Options -->
-      <template v-if="selectedTarget === 'typescript'">
-        <div class="options-row">
-          <div class="opt-field">
-            <M3TextField
-              v-model="tsOptions.rootName"
-              label="Root Interface / Type Name"
-              @update:model-value="handleGenerate"
-            />
-          </div>
-          <div class="toggles-cluster">
-            <M3Switch
-              v-model="tsOptions.useInterface"
-              label="Use Interface (vs Type)"
-              @update:model-value="handleGenerate"
-            />
-            <M3Switch
-              v-model="tsOptions.exportTypes"
-              label="Export Types"
-              @update:model-value="handleGenerate"
-            />
-            <M3Switch
-              v-model="tsOptions.readonlyProperties"
-              label="Readonly Properties"
-              @update:model-value="handleGenerate"
-            />
-            <M3Switch
-              v-model="tsOptions.optionalFields"
-              label="Optional Fields (?)"
-              @update:model-value="handleGenerate"
-            />
-          </div>
-        </div>
-      </template>
-
-      <!-- Go Options -->
-      <template v-else-if="selectedTarget === 'go'">
-        <div class="options-row">
-          <div class="opt-field">
-            <M3TextField
-              v-model="goOptions.rootName"
-              label="Root Struct Name"
-              @update:model-value="handleGenerate"
-            />
-          </div>
-          <div class="toggles-cluster">
-            <M3Checkbox
-              v-model="goOptions.includeJsonTags"
-              label='json:"..."'
-              @update:model-value="handleGenerate"
-            />
-            <M3Checkbox
-              v-model="goOptions.includeYamlTags"
-              label='yaml:"..."'
-              @update:model-value="handleGenerate"
-            />
-            <M3Checkbox
-              v-model="goOptions.includeXmlTags"
-              label='xml:"..."'
-              @update:model-value="handleGenerate"
-            />
-            <M3Switch
-              v-model="goOptions.omitempty"
-              label="omitempty"
-              @update:model-value="handleGenerate"
-            />
-            <M3Switch
-              v-model="goOptions.usePointersForNullable"
-              label="*Pointers for Nullables"
-              @update:model-value="handleGenerate"
-            />
-          </div>
-        </div>
-      </template>
-
-      <!-- Rust Options -->
-      <template v-else-if="selectedTarget === 'rust'">
-        <div class="options-row">
-          <div class="opt-field">
-            <M3TextField
-              v-model="rustOptions.rootName"
-              label="Root Struct Name"
-              @update:model-value="handleGenerate"
-            />
-          </div>
-          <div class="toggles-cluster">
-            <M3Switch
-              v-model="rustOptions.useOptionForNullable"
-              label="Option<T> for Nullable Fields"
-              @update:model-value="handleGenerate"
-            />
-            <span class="badge-label">Derives: Default, Debug, Clone, Serialize, Deserialize</span>
-          </div>
-        </div>
-      </template>
-
-      <!-- JSON Schema Options -->
-      <template v-else-if="selectedTarget === 'json-schema'">
-        <div class="options-row">
-          <div class="opt-field">
-            <M3TextField
-              v-model="schemaOptions.title"
-              label="Schema Title"
-              @update:model-value="handleGenerate"
-            />
-          </div>
-          <div class="toggles-cluster">
-            <div class="segment-group">
-              <button
-                type="button"
-                class="segment-btn"
-                :class="{ active: schemaOptions.schemaDraft === 'draft-07' }"
-                @click="schemaOptions.schemaDraft = 'draft-07'; handleGenerate()"
-              >
-                Draft-07
-              </button>
-              <button
-                type="button"
-                class="segment-btn"
-                :class="{ active: schemaOptions.schemaDraft === '2020-12' }"
-                @click="schemaOptions.schemaDraft = '2020-12'; handleGenerate()"
-              >
-                Draft 2020-12
-              </button>
-            </div>
-            <M3Switch
-              v-model="schemaOptions.includeRequired"
-              label="Include Required Properties"
-              @update:model-value="handleGenerate"
-            />
-            <M3Switch
-              v-model="schemaOptions.includeExamples"
-              label="Include Example Values"
-              @update:model-value="handleGenerate"
-            />
-          </div>
-        </div>
-      </template>
     </div>
 
     <!-- Split Editor Area -->
@@ -446,12 +468,11 @@ onMounted(() => {
         :output-language="outputLanguage"
         input-title="Input JSON"
         :output-title="`Generated ${selectedTarget.toUpperCase()} Code`"
-        :is-executing="isExecuting"
+        :is-executing="false"
         :error="genError"
         :execution-time-ms="executionTimeMs"
-        :show-execute-button="true"
-        :execute-button-label="`Generate ${selectedTarget}`"
-        height="calc(100vh - 380px)"
+        :show-execute-button="false"
+        height="100%"
         @execute="handleGenerate"
       />
     </div>
@@ -464,12 +485,12 @@ onMounted(() => {
       </div>
 
       <div class="stat-pill">
-        <span class="stat-label">Root Type:</span>
+        <span class="stat-label">Root:</span>
         <span class="stat-val">{{ lastResult.rootName }}</span>
       </div>
 
       <div class="stat-pill">
-        <span class="stat-label">Types Created:</span>
+        <span class="stat-label">Types:</span>
         <span class="stat-val">{{ lastResult.stats.typesGenerated }}</span>
       </div>
 
@@ -478,13 +499,8 @@ onMounted(() => {
         <span class="stat-val">{{ lastResult.stats.linesCount }}</span>
       </div>
 
-      <div class="stat-pill">
-        <span class="stat-label">Chars:</span>
-        <span class="stat-val">{{ lastResult.stats.characterCount }}</span>
-      </div>
-
       <div class="stat-pill success-tag">
-        <CheckCircle2 :size="14" />
+        <CheckCircle2 :size="13" />
         <span>Generated Cleanly</span>
       </div>
     </div>
@@ -495,35 +511,48 @@ onMounted(() => {
 .json-schema-container {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.375rem;
   width: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .schema-header-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-  padding: 0.75rem 1.25rem;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  padding: 0.25rem 0.625rem;
+  min-height: 36px;
   background-color: var(--md-sys-color-surface-container);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-medium);
+  border-radius: var(--md-sys-shape-corner-small);
+  overflow-x: auto;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .target-tabs {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.25rem;
 }
 
 .target-tab-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.875rem;
-  font-size: 0.8125rem;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.6875rem;
   font-weight: 500;
   border-radius: var(--md-sys-shape-corner-full);
   border: 1px solid var(--md-sys-color-outline-variant);
@@ -531,6 +560,7 @@ onMounted(() => {
   color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .target-tab-btn:hover {
@@ -546,111 +576,115 @@ onMounted(() => {
 }
 
 .lang-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
 }
 
 .ts-dot { background-color: #3178c6; }
 .go-dot { background-color: #00add8; }
 .rust-dot { background-color: #dea584; }
+.java-dot { background-color: #e76f00; }
+.python-dot { background-color: #3572a5; }
+.csharp-dot { background-color: #178600; }
 .json-dot { background-color: #cb3837; }
 
-.header-actions {
+.quick-config-inline {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  padding-left: 0.35rem;
+  border-left: 1px solid var(--md-sys-color-outline-variant);
 }
 
-.options-panel {
-  padding: 0.875rem 1.25rem;
-  background-color: var(--md-sys-color-surface-container-low);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-medium);
-}
-
-.options-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 1.25rem;
-}
-
-.opt-field {
-  width: 260px;
-}
-
-.toggles-cluster {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-  flex: 1;
-}
-
-.badge-label {
-  font-size: 0.75rem;
-  color: var(--md-sys-color-on-surface-variant);
-  background-color: var(--md-sys-color-surface-container-highest);
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--md-sys-shape-corner-small);
-}
-
-.segment-group {
-  display: inline-flex;
+.compact-input {
+  height: 24px;
+  width: 140px;
+  padding: 0 0.5rem;
+  font-size: 0.6875rem;
   background-color: var(--md-sys-color-surface-container-high);
-  border-radius: var(--md-sys-shape-corner-full);
-  padding: 2px;
   border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  color: var(--md-sys-color-on-surface);
+  outline: none;
 }
 
-.segment-btn {
+.compact-input:focus {
+  border-color: var(--md-sys-color-primary);
+}
+
+.compact-action-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.35rem 0.75rem;
+  padding: 0.25rem 0.65rem;
   font-size: 0.75rem;
   font-weight: 500;
-  border: none;
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
   border-radius: var(--md-sys-shape-corner-full);
   cursor: pointer;
+  border: none;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
-.segment-btn:hover {
-  background-color: var(--md-sys-color-surface-container-highest);
-  color: var(--md-sys-color-on-surface);
-}
-
-.segment-btn.active {
+.primary-btn {
   background-color: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
   font-weight: 600;
 }
 
+.primary-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.text-btn {
+  background-color: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.text-btn:hover:not(:disabled) {
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+}
+
+.compact-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.exec-badge {
+  font-size: 0.6875rem;
+  font-family: var(--md-sys-typescale-code-font, monospace);
+  color: var(--md-sys-color-on-surface-variant);
+  background-color: var(--md-sys-color-surface-container-high);
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
 .editor-area {
   width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .stats-footer {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.625rem;
-  padding: 0.625rem 1rem;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
   background-color: var(--md-sys-color-surface-container-low);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-small);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
 }
 
 .stat-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.5rem;
+  gap: 0.25rem;
+  padding: 0.15rem 0.4rem;
   background-color: var(--md-sys-color-surface-container-high);
   border-radius: var(--md-sys-shape-corner-small);
   color: var(--md-sys-color-on-surface-variant);

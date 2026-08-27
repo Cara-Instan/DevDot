@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import {
   Columns2,
   Rows3,
@@ -16,7 +16,11 @@ import {
   Eye,
   Edit3,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Search,
+  Plus,
+  Minus,
+  FileSpreadsheet
 } from 'lucide-vue-next'
 import {
   M3Button,
@@ -27,7 +31,8 @@ import { useSnapshotStore } from '@/stores'
 import type {
   DiffViewMode,
   JsonDiffOptions,
-  JsonDiffResult
+  JsonDiffResult,
+  StructuralDiffItem
 } from '../types'
 
 const { execute } = useExecutionEngine()
@@ -57,7 +62,9 @@ const initialSaved = snapshotStore.getToolState('json-diff', {
   collapseUnchanged: false,
   contextLines: 3,
   editMode: false,
-  showStructural: true
+  showStructural: true,
+  structuralPanelHeight: 260,
+  isPanelMaximized: false
 })
 
 const leftJson = ref(initialSaved.leftJson)
@@ -69,6 +76,15 @@ const collapseUnchanged = ref(initialSaved.collapseUnchanged)
 const contextLines = ref(initialSaved.contextLines)
 const editMode = ref(initialSaved.editMode)
 const showStructural = ref(initialSaved.showStructural)
+const structuralPanelHeight = ref<number>(initialSaved.structuralPanelHeight ?? 260)
+const isPanelMaximized = ref<boolean>(initialSaved.isPanelMaximized ?? false)
+const isPanelDragging = ref(false)
+
+// Structural breakdown filters & interaction
+const filterQuery = ref('')
+const filterType = ref<'all' | 'added' | 'removed' | 'modified' | 'type_changed'>('all')
+const copiedPathId = ref<string | null>(null)
+const highlightedRowId = ref<string | null>(null)
 
 // Fullscreen & Mobile Column Layout State
 const rootRef = ref<HTMLDivElement | null>(null)
@@ -88,7 +104,19 @@ const isSyncingScroll = ref(false)
 
 // Sync changes to snapshot store
 watch(
-  [leftJson, rightJson, viewMode, sortKeys, autoFormat, collapseUnchanged, contextLines, editMode, showStructural],
+  [
+    leftJson,
+    rightJson,
+    viewMode,
+    sortKeys,
+    autoFormat,
+    collapseUnchanged,
+    contextLines,
+    editMode,
+    showStructural,
+    structuralPanelHeight,
+    isPanelMaximized
+  ],
   () => {
     snapshotStore.setToolState('json-diff', {
       leftJson: leftJson.value,
@@ -99,7 +127,9 @@ watch(
       collapseUnchanged: collapseUnchanged.value,
       contextLines: contextLines.value,
       editMode: editMode.value,
-      showStructural: showStructural.value
+      showStructural: showStructural.value,
+      structuralPanelHeight: structuralPanelHeight.value,
+      isPanelMaximized: isPanelMaximized.value
     })
   },
   { deep: true }
@@ -119,6 +149,8 @@ watch(
       if (newState.contextLines !== undefined && newState.contextLines !== contextLines.value) contextLines.value = newState.contextLines
       if (newState.editMode !== undefined && newState.editMode !== editMode.value) editMode.value = newState.editMode
       if (newState.showStructural !== undefined && newState.showStructural !== showStructural.value) showStructural.value = newState.showStructural
+      if (newState.structuralPanelHeight !== undefined && newState.structuralPanelHeight !== structuralPanelHeight.value) structuralPanelHeight.value = newState.structuralPanelHeight
+      if (newState.isPanelMaximized !== undefined && newState.isPanelMaximized !== isPanelMaximized.value) isPanelMaximized.value = newState.isPanelMaximized
       handleRunDiff()
     }
   },
@@ -309,6 +341,177 @@ async function handleCopyDiff() {
   } catch (err) {
     console.error('Failed to copy', err)
   }
+}
+
+// Structural Breakdown Analytics & Filtering
+const structuralCounts = computed(() => {
+  const diffs = diffResult.value?.structuralDiff || []
+  return {
+    all: diffs.length,
+    added: diffs.filter((d) => d.type === 'added').length,
+    removed: diffs.filter((d) => d.type === 'removed').length,
+    modified: diffs.filter((d) => d.type === 'modified').length,
+    type_changed: diffs.filter((d) => d.type === 'type_changed').length
+  }
+})
+
+const filteredStructuralDiff = computed(() => {
+  const diffs = diffResult.value?.structuralDiff || []
+  return diffs.filter((item) => {
+    if (filterType.value !== 'all' && item.type !== filterType.value) {
+      return false
+    }
+    if (filterQuery.value.trim()) {
+      const q = filterQuery.value.toLowerCase().trim()
+      return item.path.toLowerCase().includes(q) || item.message.toLowerCase().includes(q)
+    }
+    return true
+  })
+})
+
+// Structural Panel Window Resizing Handlers
+function increasePanelHeight(step = 80) {
+  isPanelMaximized.value = false
+  structuralPanelHeight.value = Math.min(650, structuralPanelHeight.value + step)
+}
+
+function decreasePanelHeight(step = 80) {
+  isPanelMaximized.value = false
+  structuralPanelHeight.value = Math.max(120, structuralPanelHeight.value - step)
+}
+
+function setPanelPreset(height: number) {
+  isPanelMaximized.value = false
+  structuralPanelHeight.value = height
+}
+
+function togglePanelMaximize() {
+  isPanelMaximized.value = !isPanelMaximized.value
+}
+
+// Drag & Resize Handlers for Structural Panel
+function startPanelDrag(event: MouseEvent | TouchEvent) {
+  event.preventDefault()
+  isPanelDragging.value = true
+  isPanelMaximized.value = false
+
+  document.body.style.cursor = 'row-resize'
+  document.body.style.userSelect = 'none'
+
+  const startY = 'touches' in event ? event.touches[0].clientY : event.clientY
+  const startHeight = structuralPanelHeight.value
+
+  function onDrag(moveEvent: MouseEvent | TouchEvent) {
+    if (!isPanelDragging.value) return
+    const currentY = 'touches' in moveEvent ? moveEvent.touches[0].clientY : moveEvent.clientY
+    const deltaY = startY - currentY
+    const newHeight = Math.max(120, Math.min(650, startHeight + deltaY))
+    structuralPanelHeight.value = newHeight
+  }
+
+  function stopDrag() {
+    isPanelDragging.value = false
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    window.removeEventListener('mousemove', onDrag)
+    window.removeEventListener('touchmove', onDrag)
+    window.removeEventListener('mouseup', stopDrag)
+    window.removeEventListener('touchend', stopDrag)
+  }
+
+  window.addEventListener('mousemove', onDrag)
+  window.addEventListener('touchmove', onDrag, { passive: false })
+  window.addEventListener('mouseup', stopDrag)
+  window.addEventListener('touchend', stopDrag)
+}
+
+// Structural Row Click Jump & Highlight
+let highlightTimer: any = null
+function pulseHighlight(id: string) {
+  highlightedRowId.value = id
+  clearTimeout(highlightTimer)
+  highlightTimer = setTimeout(() => {
+    highlightedRowId.value = null
+  }, 2200)
+}
+
+function handleStructuralRowClick(item: StructuralDiffItem) {
+  if (!diffResult.value) return
+
+  const pathParts = item.path.replace(/^\$\.?/, '').split('.')
+  const keySegment = pathParts.pop()?.replace(/\[\d+\]$/, '') || ''
+
+  let targetId = ''
+
+  if (viewMode.value === 'unified') {
+    const lines = diffResult.value.unifiedLines
+    const idx = lines.findIndex((l) => keySegment && l.content.includes(`"${keySegment}"`))
+    if (idx !== -1) {
+      targetId = `diff-row-${idx}`
+    }
+  } else {
+    if (item.type === 'added') {
+      const lines = diffResult.value.rightLines
+      const idx = lines.findIndex((l) => keySegment && l.content.includes(`"${keySegment}"`))
+      if (idx !== -1) {
+        targetId = `diff-row-right-${idx}`
+      }
+    } else {
+      const lines = diffResult.value.leftLines
+      const idx = lines.findIndex((l) => keySegment && l.content.includes(`"${keySegment}"`))
+      if (idx !== -1) {
+        targetId = `diff-row-${idx}`
+      }
+    }
+  }
+
+  if (targetId) {
+    const rowElem = document.getElementById(targetId)
+    if (rowElem) {
+      rowElem.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      pulseHighlight(targetId)
+    }
+  }
+}
+
+async function copyPath(path: string, id: string) {
+  try {
+    await navigator.clipboard.writeText(path)
+    copiedPathId.value = id
+    setTimeout(() => {
+      if (copiedPathId.value === id) copiedPathId.value = null
+    }, 1500)
+  } catch (err) {
+    console.error('Failed to copy path', err)
+  }
+}
+
+async function copyStructuralAsMarkdown() {
+  if (!diffResult.value?.structuralDiff.length) return
+  const header = `| Type | JSON Path | Changes |\n|---|---|---|`
+  const rows = diffResult.value.structuralDiff.map(
+    (item) => `| ${item.type.toUpperCase()} | \`${item.path}\` | ${item.message} |`
+  )
+  const md = [header, ...rows].join('\n')
+  await navigator.clipboard.writeText(md)
+  isCopied.value = true
+  setTimeout(() => {
+    isCopied.value = false
+  }, 2000)
+}
+
+async function copyStructuralAsCsv() {
+  if (!diffResult.value?.structuralDiff.length) return
+  const header = `"Type","JSON Path","Description"`
+  const rows = diffResult.value.structuralDiff.map(
+    (item) => `"${item.type.toUpperCase()}","${item.path.replace(/"/g, '""')}","${item.message.replace(/"/g, '""')}"`
+  )
+  const csv = [header, ...rows].join('\n')
+  await navigator.clipboard.writeText(csv)
+  isCopied.value = true
+  setTimeout(() => {
+    isCopied.value = false
+  }, 2000)
 }
 
 onMounted(() => {
@@ -627,7 +830,8 @@ onBeforeUnmount(() => {
                 class="diff-row"
                 :class="[
                   `row-${row.type}`,
-                  { 'is-collapsed': row.isCollapsedPlaceholder }
+                  { 'is-collapsed': row.isCollapsedPlaceholder },
+                  { 'pulse-highlight': highlightedRowId === `diff-row-${idx}` }
                 ]"
               >
                 <!-- Gutter: Line Number & Change Marker -->
@@ -683,7 +887,8 @@ onBeforeUnmount(() => {
                 class="diff-row"
                 :class="[
                   `row-${row.type}`,
-                  { 'is-collapsed': row.isCollapsedPlaceholder }
+                  { 'is-collapsed': row.isCollapsedPlaceholder },
+                  { 'pulse-highlight': highlightedRowId === `diff-row-right-${idx}` }
                 ]"
               >
                 <!-- Gutter: Line Number & Change Marker -->
@@ -743,7 +948,10 @@ onBeforeUnmount(() => {
               :id="`diff-row-${idx}`"
               :key="row.id"
               class="unified-row"
-              :class="`row-${row.type}`"
+              :class="[
+                `row-${row.type}`,
+                { 'pulse-highlight': highlightedRowId === `diff-row-${idx}` }
+              ]"
             >
               <div class="unified-gutter">
                 <span class="gutter-left">{{ row.leftLineNumber !== undefined ? row.leftLineNumber : '' }}</span>
@@ -772,38 +980,221 @@ onBeforeUnmount(() => {
         </div>
       </template>
 
+      <!-- STRUCTURAL RESIZE SPLITTER HANDLE -->
+      <div
+        v-if="showStructural && diffResult?.structuralDiff.length && !isPanelMaximized"
+        class="structural-resize-handle"
+        :class="{ 'is-dragging': isPanelDragging }"
+        title="Drag up/down to adjust breakdown height (Double click to maximize)"
+        @mousedown="startPanelDrag"
+        @touchstart.passive="startPanelDrag"
+        @dblclick="togglePanelMaximize"
+      >
+        <div class="resize-handle-bar"></div>
+      </div>
+
       <!-- STRUCTURAL DIFFERENCES BREAKDOWN PANEL -->
-      <div v-if="showStructural && diffResult?.structuralDiff.length" class="structural-panel">
+      <div
+        v-if="showStructural && diffResult?.structuralDiff.length"
+        class="structural-panel"
+        :class="{ 'is-maximized': isPanelMaximized }"
+        :style="{ height: isPanelMaximized ? undefined : `${structuralPanelHeight}px` }"
+      >
+        <!-- Header -->
         <div class="structural-header">
           <div class="header-left">
             <Layers :size="15" class="primary-icon" />
             <span class="sec-title">Structural JSON Breakdown</span>
             <span class="count-tag">{{ diffResult.structuralDiff.length }} Changes</span>
+
+            <!-- Quick Height Presets -->
+            <div class="panel-presets-group">
+              <button
+                type="button"
+                class="preset-btn"
+                :class="{ active: !isPanelMaximized && structuralPanelHeight <= 180 }"
+                title="Compact Height (160px)"
+                @click="setPanelPreset(160)"
+              >
+                160px
+              </button>
+              <button
+                type="button"
+                class="preset-btn"
+                :class="{ active: !isPanelMaximized && structuralPanelHeight > 180 && structuralPanelHeight <= 300 }"
+                title="Standard Height (260px)"
+                @click="setPanelPreset(260)"
+              >
+                260px
+              </button>
+              <button
+                type="button"
+                class="preset-btn"
+                :class="{ active: !isPanelMaximized && structuralPanelHeight > 300 }"
+                title="Expanded Height (420px)"
+                @click="setPanelPreset(420)"
+              >
+                420px
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            class="close-mini-btn"
-            title="Close panel"
-            @click="showStructural = false"
-          >
-            ✕
-          </button>
+
+          <div class="header-right">
+            <!-- Sizing buttons: Increase & Decrease -->
+            <div class="panel-action-group">
+              <button
+                type="button"
+                class="panel-icon-btn"
+                title="Decrease Height (-80px)"
+                @click="decreasePanelHeight()"
+              >
+                <Minus :size="13" />
+              </button>
+              <button
+                type="button"
+                class="panel-icon-btn"
+                title="Increase Height (+80px)"
+                @click="increasePanelHeight()"
+              >
+                <Plus :size="13" />
+              </button>
+              <button
+                type="button"
+                class="panel-icon-btn"
+                :class="{ active: isPanelMaximized }"
+                :title="isPanelMaximized ? 'Restore Down' : 'Maximize Breakdown View'"
+                @click="togglePanelMaximize"
+              >
+                <component :is="isPanelMaximized ? Minimize2 : Maximize2" :size="13" />
+              </button>
+            </div>
+
+            <!-- Close Panel -->
+            <button
+              type="button"
+              class="close-mini-btn"
+              title="Close panel"
+              @click="showStructural = false"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
+        <!-- Filter & Search Toolbar -->
+        <div class="structural-subbar">
+          <div class="subbar-left">
+            <!-- Search input -->
+            <div class="search-box">
+              <Search :size="13" class="search-icon" />
+              <input
+                v-model="filterQuery"
+                type="text"
+                class="search-input"
+                placeholder="Filter by path or change..."
+                spellcheck="false"
+              />
+              <button
+                v-if="filterQuery"
+                type="button"
+                class="clear-search-btn"
+                @click="filterQuery = ''"
+              >
+                ✕
+              </button>
+            </div>
+
+            <!-- Filter Type Chips -->
+            <div class="filter-chips">
+              <button
+                type="button"
+                class="filter-chip"
+                :class="{ active: filterType === 'all' }"
+                @click="filterType = 'all'"
+              >
+                All ({{ structuralCounts.all }})
+              </button>
+              <button
+                v-if="structuralCounts.added > 0"
+                type="button"
+                class="filter-chip chip-added"
+                :class="{ active: filterType === 'added' }"
+                @click="filterType = 'added'"
+              >
+                +Added ({{ structuralCounts.added }})
+              </button>
+              <button
+                v-if="structuralCounts.removed > 0"
+                type="button"
+                class="filter-chip chip-removed"
+                :class="{ active: filterType === 'removed' }"
+                @click="filterType = 'removed'"
+              >
+                -Removed ({{ structuralCounts.removed }})
+              </button>
+              <button
+                v-if="structuralCounts.modified > 0"
+                type="button"
+                class="filter-chip chip-modified"
+                :class="{ active: filterType === 'modified' }"
+                @click="filterType = 'modified'"
+              >
+                ~Modified ({{ structuralCounts.modified }})
+              </button>
+              <button
+                v-if="structuralCounts.type_changed > 0"
+                type="button"
+                class="filter-chip chip-type-changed"
+                :class="{ active: filterType === 'type_changed' }"
+                @click="filterType = 'type_changed'"
+              >
+                !Type ({{ structuralCounts.type_changed }})
+              </button>
+            </div>
+          </div>
+
+          <div class="subbar-right">
+            <!-- Export Options -->
+            <button
+              type="button"
+              class="subbar-btn"
+              title="Copy as Markdown Table"
+              @click="copyStructuralAsMarkdown"
+            >
+              <Copy :size="12" />
+              <span>Copy MD</span>
+            </button>
+            <button
+              type="button"
+              class="subbar-btn"
+              title="Copy as CSV"
+              @click="copyStructuralAsCsv"
+            >
+              <FileSpreadsheet :size="12" />
+              <span>Copy CSV</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Table View -->
         <div class="structural-table-container">
           <table class="structural-table">
             <thead>
               <tr>
-                <th style="width: 120px;">Type</th>
-                <th>JSON Path</th>
-                <th>Description / Changes</th>
+                <th style="width: 130px;">Type</th>
+                <th style="width: 240px;">JSON Path</th>
+                <th>Description / Value Changes</th>
+                <th style="width: 70px; text-align: right;">Action</th>
               </tr>
             </thead>
             <tbody>
               <tr
-                v-for="item in diffResult.structuralDiff"
+                v-for="item in filteredStructuralDiff"
                 :key="item.id"
                 :class="`struct-row-${item.type}`"
+                class="clickable-struct-row"
+                title="Click to jump to line in diff viewer"
+                @click="handleStructuralRowClick(item)"
               >
                 <td>
                   <span class="struct-type-pill" :class="`pill-${item.type}`">
@@ -811,10 +1202,43 @@ onBeforeUnmount(() => {
                   </span>
                 </td>
                 <td class="path-cell">
-                  <code>{{ item.path }}</code>
+                  <div class="path-wrapper">
+                    <code>{{ item.path }}</code>
+                    <button
+                      type="button"
+                      class="copy-path-btn"
+                      title="Copy JSON Path"
+                      @click.stop="copyPath(item.path, item.id)"
+                    >
+                      <component :is="copiedPathId === item.id ? Check : Copy" :size="11" />
+                    </button>
+                  </div>
                 </td>
                 <td class="message-cell">
-                  {{ item.message }}
+                  <div class="message-wrapper">
+                    <span class="message-text">{{ item.message }}</span>
+                    <span v-if="item.oldValue !== undefined && item.newValue !== undefined" class="diff-val-preview">
+                      <span class="val-old">{{ JSON.stringify(item.oldValue) }}</span>
+                      <span class="val-arrow">&rarr;</span>
+                      <span class="val-new">{{ JSON.stringify(item.newValue) }}</span>
+                    </span>
+                  </div>
+                </td>
+                <td class="action-cell">
+                  <button
+                    type="button"
+                    class="jump-pill-btn"
+                    title="Jump to line"
+                    @click.stop="handleStructuralRowClick(item)"
+                  >
+                    Jump
+                  </button>
+                </td>
+              </tr>
+
+              <tr v-if="!filteredStructuralDiff.length">
+                <td colspan="4" class="empty-struct-search">
+                  No structural changes match your search filter.
                 </td>
               </tr>
             </tbody>
@@ -832,8 +1256,8 @@ onBeforeUnmount(() => {
   height: 100%;
   width: 100%;
   flex: 1;
-  min-height: calc(100vh - 210px);
-  gap: 12px;
+  min-height: 0;
+  gap: 10px;
   position: relative;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -875,22 +1299,25 @@ onBeforeUnmount(() => {
 /* Toolbar */
 .diff-toolbar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 0.5rem;
+  min-height: 36px;
   background: var(--md-sys-color-surface-container);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 12px;
-  padding: 8px 14px;
+  border-radius: var(--md-sys-shape-corner-small);
+  padding: 0.25rem 0.625rem;
+  overflow-x: auto;
 }
 
 .toolbar-left,
 .toolbar-right {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .control-group {
@@ -1118,7 +1545,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 520px;
+  min-height: 0;
+  height: 100%;
   gap: 10px;
 }
 
@@ -1128,7 +1556,8 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   flex: 1;
-  min-height: 500px;
+  min-height: 0;
+  height: 100%;
   width: 100%;
   box-sizing: border-box;
 }
@@ -1182,7 +1611,8 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0;
   flex: 1;
-  min-height: 500px;
+  min-height: 0;
+  height: 100%;
   width: 100%;
   box-sizing: border-box;
   background: var(--md-sys-color-surface-container);
@@ -1353,7 +1783,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 500px;
+  min-height: 0;
+  height: 100%;
   background: var(--md-sys-color-surface-container);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: 10px;
@@ -1420,6 +1851,62 @@ onBeforeUnmount(() => {
   background: #f59e0b;
 }
 
+/* Pulse highlight for row jumped from structural breakdown */
+.pulse-highlight {
+  animation: pulse-glow 2.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes pulse-glow {
+  0% {
+    background-color: var(--md-sys-color-primary-container) !important;
+    outline: 2px solid var(--md-sys-color-primary);
+    outline-offset: -2px;
+  }
+  60% {
+    background-color: rgba(99, 102, 241, 0.25) !important;
+    outline: 2px solid rgba(99, 102, 241, 0.5);
+    outline-offset: -2px;
+  }
+  100% {
+    background-color: transparent;
+    outline: none;
+  }
+}
+
+/* Structural Resize Handle */
+.structural-resize-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 8px;
+  cursor: row-resize;
+  background: transparent;
+  user-select: none;
+  margin: 2px 0 -4px 0;
+  z-index: 10;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.structural-resize-handle:hover,
+.structural-resize-handle.is-dragging {
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.resize-handle-bar {
+  width: 44px;
+  height: 3.5px;
+  border-radius: 2px;
+  background: var(--md-sys-color-outline-variant);
+  transition: background 0.15s ease, width 0.15s ease;
+}
+
+.structural-resize-handle:hover .resize-handle-bar,
+.structural-resize-handle.is-dragging .resize-handle-bar {
+  background: var(--md-sys-color-primary);
+  width: 72px;
+}
+
 /* Structural Breakdown Panel */
 .structural-panel {
   display: flex;
@@ -1427,21 +1914,36 @@ onBeforeUnmount(() => {
   background: var(--md-sys-color-surface-container);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: 10px;
-  max-height: 240px;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  min-height: 120px;
+  flex-shrink: 0;
+  position: relative;
+  transition: height 0.12s ease-out;
+}
+
+.structural-panel.is-maximized {
+  position: absolute;
+  inset: 0;
+  height: 100% !important;
+  max-height: 100% !important;
+  z-index: 40;
+  border-radius: 10px;
 }
 
 .structural-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 12px;
+  padding: 6px 12px;
   background: var(--md-sys-color-surface-container-high);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  flex-shrink: 0;
+  gap: 8px;
 }
 
-.header-left {
+.header-left,
+.header-right {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1461,28 +1963,208 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
+.panel-presets-group {
+  display: inline-flex;
+  background: var(--md-sys-color-surface-container-lowest);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+  margin-left: 6px;
+}
+
+.preset-btn {
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.preset-btn:hover {
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+}
+
+.preset-btn.active {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  font-weight: 600;
+}
+
+.panel-action-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--md-sys-color-surface-container-lowest);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.panel-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.panel-icon-btn:hover {
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+}
+
+.panel-icon-btn.active {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
 .close-mini-btn {
   border: none;
   background: transparent;
   color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 3px 7px;
   border-radius: 4px;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .close-mini-btn:hover {
   background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-error);
 }
 
+/* Structural Subbar (Filter & Export) */
+.structural-subbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 12px;
+  background: var(--md-sys-color-surface-container-lowest);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  flex-shrink: 0;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.subbar-left,
+.subbar-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 6px;
+  padding: 0 6px;
+  width: 180px;
+}
+
+.search-icon {
+  color: var(--md-sys-color-on-surface-variant);
+  flex-shrink: 0;
+}
+
+.search-input {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  padding: 3px 4px;
+  color: var(--md-sys-color-on-surface);
+  outline: none;
+}
+
+.clear-search-btn {
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 10px;
+}
+
+.filter-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filter-chip {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.filter-chip:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.filter-chip.active {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
+  font-weight: 600;
+}
+
+.subbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.subbar-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+}
+
+/* Structural Table */
 .structural-table-container {
+  flex: 1;
   overflow: auto;
-  max-height: 195px;
+  min-height: 0;
 }
 
 .structural-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 11.5px;
   text-align: left;
 }
 
@@ -1498,8 +2180,24 @@ onBeforeUnmount(() => {
 }
 
 .structural-table td {
-  padding: 6px 12px;
+  padding: 5px 12px;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  vertical-align: middle;
+}
+
+.clickable-struct-row {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.clickable-struct-row:hover {
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.path-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .path-cell code {
@@ -1509,6 +2207,89 @@ onBeforeUnmount(() => {
   padding: 2px 6px;
   border-radius: 4px;
   color: var(--md-sys-color-primary);
+  word-break: break-all;
+}
+
+.copy-path-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0.6;
+  transition: all 0.12s ease;
+}
+
+.copy-path-btn:hover {
+  opacity: 1;
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-primary);
+}
+
+.message-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.diff-val-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.val-old {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.val-arrow {
+  color: var(--md-sys-color-on-surface-variant);
+  font-weight: bold;
+}
+
+.val-new {
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.action-cell {
+  text-align: right;
+}
+
+.jump-pill-btn {
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-primary);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.jump-pill-btn:hover {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.empty-struct-search {
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--md-sys-color-on-surface-variant);
+  font-style: italic;
 }
 
 .struct-type-pill {

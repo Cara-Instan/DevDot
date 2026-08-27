@@ -10,7 +10,6 @@ import {
   RotateCcw
 } from 'lucide-vue-next'
 import {
-  M3Button,
   M3Switch,
   SplitEditor
 } from '@/components'
@@ -208,12 +207,12 @@ onMounted(() => {
 
 <template>
   <div class="json-formatter-container">
-    <!-- Toolbar Controls Card -->
+    <!-- Compact 1-Line Desktop Toolbar -->
     <div class="formatter-toolbar">
       <div class="toolbar-left">
         <!-- Indentation selector -->
         <div class="control-group">
-          <label class="control-label">Indentation:</label>
+          <label class="control-label">Indent:</label>
           <div class="segment-group">
             <button
               type="button"
@@ -221,7 +220,7 @@ onMounted(() => {
               :class="{ active: indentType === '2-spaces' && !isMinified }"
               @click="indentType = '2-spaces'; isMinified = false; handleFormat(false)"
             >
-              2 Spaces
+              2 sp
             </button>
             <button
               type="button"
@@ -229,7 +228,7 @@ onMounted(() => {
               :class="{ active: indentType === '4-spaces' && !isMinified }"
               @click="indentType = '4-spaces'; isMinified = false; handleFormat(false)"
             >
-              4 Spaces
+              4 sp
             </button>
             <button
               type="button"
@@ -237,14 +236,14 @@ onMounted(() => {
               :class="{ active: indentType === 'tab' && !isMinified }"
               @click="indentType = 'tab'; isMinified = false; handleFormat(false)"
             >
-              1 Tab
+              Tab
             </button>
           </div>
         </div>
 
         <!-- Sort Keys Selector -->
         <div class="control-group">
-          <label class="control-label">Sort Keys:</label>
+          <label class="control-label">Sort:</label>
           <div class="segment-group">
             <button
               type="button"
@@ -261,7 +260,7 @@ onMounted(() => {
               title="Sort Alphabetically (A-Z)"
               @click="sortKeys = 'asc'; handleFormat(isMinified)"
             >
-              <ArrowDownAZ :size="14" />
+              <ArrowDownAZ :size="13" />
               A-Z
             </button>
             <button
@@ -280,70 +279,72 @@ onMounted(() => {
         <div class="toggle-control">
           <M3Switch
             v-model="autoRepair"
-            label="Auto-Repair Malformed JSON"
+            label="Auto-Repair"
             @update:model-value="handleFormat(isMinified)"
           />
         </div>
       </div>
 
       <div class="toolbar-right">
-        <M3Button
-          variant="filled"
+        <span v-if="executionTimeMs !== null" class="exec-badge">
+          {{ executionTimeMs }} ms
+        </span>
+
+        <button
+          type="button"
+          class="compact-action-btn primary-btn"
           :disabled="isExecuting"
           @click="handleFormat(false)"
         >
-          <template #icon>
-            <Sparkles :size="16" />
-          </template>
-          Prettify (Format)
-        </M3Button>
+          <Sparkles :size="14" />
+          <span>Prettify</span>
+        </button>
 
-        <M3Button
-          variant="tonal"
+        <button
+          type="button"
+          class="compact-action-btn tonal-btn"
           :disabled="isExecuting"
           @click="handleFormat(true)"
         >
-          <template #icon>
-            <Minimize2 :size="16" />
-          </template>
-          Minify
-        </M3Button>
+          <Minimize2 :size="14" />
+          <span>Minify</span>
+        </button>
 
-        <M3Button
-          variant="outlined"
+        <button
+          type="button"
+          class="compact-action-btn outline-btn"
           :disabled="isExecuting"
           title="Fix single quotes, unquoted keys, and trailing commas"
           @click="handleExplicitRepair"
         >
-          <template #icon>
-            <Wrench :size="16" />
-          </template>
-          Repair
-        </M3Button>
+          <Wrench :size="13" />
+          <span>Repair</span>
+        </button>
 
-        <M3Button
-          variant="text"
+        <button
+          type="button"
+          class="compact-action-btn text-btn"
           @click="handleLoadSample"
         >
           Sample
-        </M3Button>
+        </button>
 
-        <M3Button
-          variant="text"
+        <button
+          type="button"
+          class="compact-action-btn text-btn"
+          title="Clear Editor"
           @click="handleClear"
         >
-          <template #icon>
-            <RotateCcw :size="14" />
-          </template>
-          Clear
-        </M3Button>
+          <RotateCcw :size="13" />
+          <span>Clear</span>
+        </button>
       </div>
     </div>
 
     <!-- Auto-Repair Notice Banner -->
     <div v-if="repairNotices.length > 0" class="repair-banner">
       <div class="banner-icon">
-        <Wrench :size="16" />
+        <Wrench :size="14" />
       </div>
       <div class="banner-content">
         <span class="banner-title">Auto-Repair Active:</span>
@@ -353,17 +354,18 @@ onMounted(() => {
 
     <!-- Error Banner -->
     <div v-if="formatError" class="error-banner">
-      <AlertCircle :size="18" class="error-icon" />
+      <AlertCircle :size="16" class="error-icon" />
       <div class="error-text-container">
         <strong>JSON Syntax Error:</strong>
         <span>{{ formatError }}</span>
       </div>
-      <M3Button
-        variant="tonal"
+      <button
+        type="button"
+        class="compact-action-btn tonal-btn"
         @click="handleExplicitRepair"
       >
         Force Repair
-      </M3Button>
+      </button>
     </div>
 
     <!-- Split Editor Area -->
@@ -373,14 +375,13 @@ onMounted(() => {
         v-model:output="outputJson"
         input-language="json"
         output-language="json"
-        input-title="Input JSON (or malformed JSONC)"
-        output-title="Formatted / Validated JSON Output"
+        input-title="Input JSON"
+        output-title="Formatted Output"
         :is-executing="isExecuting"
         :error="formatError"
         :execution-time-ms="executionTimeMs"
-        :show-execute-button="true"
-        execute-button-label="Format JSON"
-        height="calc(100vh - 350px)"
+        :show-execute-button="false"
+        height="100%"
         @execute="handleFormat(false)"
       />
     </div>
@@ -421,8 +422,8 @@ onMounted(() => {
       </div>
 
       <div class="stat-pill success-tag">
-        <CheckCircle2 :size="14" />
-        <span>Standard Valid JSON</span>
+        <CheckCircle2 :size="13" />
+        <span>Standard JSON</span>
       </div>
     </div>
   </div>
@@ -432,38 +433,44 @@ onMounted(() => {
 .json-formatter-container {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.375rem;
   width: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .formatter-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 1rem;
-  padding: 0.875rem 1.25rem;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  padding: 0.25rem 0.625rem;
+  min-height: 36px;
   background-color: var(--md-sys-color-surface-container);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-medium);
+  border-radius: var(--md-sys-shape-corner-small);
+  overflow-x: auto;
 }
 
 .toolbar-left,
 .toolbar-right {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.875rem;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .control-group {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .control-label {
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 500;
   color: var(--md-sys-color-on-surface-variant);
 }
@@ -479,9 +486,9 @@ onMounted(() => {
 .segment-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem 0.75rem;
-  font-size: 0.75rem;
+  gap: 0.25rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.6875rem;
   font-weight: 500;
   border: none;
   background: transparent;
@@ -489,6 +496,7 @@ onMounted(() => {
   border-radius: var(--md-sys-shape-corner-full);
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .segment-btn:hover {
@@ -505,19 +513,86 @@ onMounted(() => {
 .toggle-control {
   display: flex;
   align-items: center;
-  padding-left: 0.5rem;
+  padding-left: 0.35rem;
   border-left: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.compact-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: var(--md-sys-shape-corner-full);
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.primary-btn {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  font-weight: 600;
+}
+
+.primary-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.tonal-btn {
+  background-color: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.tonal-btn:hover:not(:disabled) {
+  background-color: var(--md-sys-color-surface-container-highest);
+}
+
+.outline-btn {
+  background-color: transparent;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface);
+}
+
+.outline-btn:hover:not(:disabled) {
+  background-color: var(--md-sys-color-surface-container-highest);
+}
+
+.text-btn {
+  background-color: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.text-btn:hover:not(:disabled) {
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+}
+
+.compact-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.exec-badge {
+  font-size: 0.6875rem;
+  font-family: var(--md-sys-typescale-code-font, monospace);
+  color: var(--md-sys-color-on-surface-variant);
+  background-color: var(--md-sys-color-surface-container-high);
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--md-sys-shape-corner-small);
 }
 
 .repair-banner {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.625rem 1rem;
+  gap: 0.5rem;
+  padding: 0.35rem 0.75rem;
   background-color: var(--md-sys-color-secondary-container);
   color: var(--md-sys-color-on-secondary-container);
   border-radius: var(--md-sys-shape-corner-small);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
 }
 
 .banner-icon {
@@ -529,7 +604,7 @@ onMounted(() => {
 .banner-content {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
   flex-wrap: wrap;
 }
 
@@ -541,12 +616,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 1rem;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
   background-color: var(--md-sys-color-error-container);
   color: var(--md-sys-color-on-error-container);
   border-radius: var(--md-sys-shape-corner-small);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
 }
 
 .error-icon {
@@ -557,31 +632,35 @@ onMounted(() => {
 .error-text-container {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
   flex: 1;
 }
 
 .editor-area {
   width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .stats-footer {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.625rem;
-  padding: 0.625rem 1rem;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
   background-color: var(--md-sys-color-surface-container-low);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-small);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
 }
 
 .stat-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.5rem;
+  gap: 0.25rem;
+  padding: 0.15rem 0.4rem;
   background-color: var(--md-sys-color-surface-container-high);
   border-radius: var(--md-sys-shape-corner-small);
   color: var(--md-sys-color-on-surface-variant);
@@ -598,9 +677,9 @@ onMounted(() => {
 }
 
 .savings-tag {
-  padding: 0.1rem 0.35rem;
+  padding: 0.05rem 0.3rem;
   border-radius: var(--md-sys-shape-corner-full);
-  font-size: 0.6875rem;
+  font-size: 0.625rem;
   font-weight: 600;
   background-color: var(--md-sys-color-surface-container-highest);
 }
