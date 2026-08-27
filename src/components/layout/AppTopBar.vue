@@ -12,7 +12,8 @@ import {
   Flame,
   Clock,
   DownloadCloud,
-  RefreshCw
+  RefreshCw,
+  Settings
 } from 'lucide-vue-next'
 
 import { M3Button, M3Tooltip } from '@/components/ui'
@@ -203,6 +204,20 @@ function handleToggleNav() {
           </M3Button>
         </M3Tooltip>
       </div>
+
+      <!-- Preferences & Settings Dialog -->
+      <M3Tooltip text="Preferences & Settings">
+        <M3Button
+          variant="outlined"
+          :icon-only="true"
+          aria-label="Open settings"
+          @click="navStore.openSettings()"
+        >
+          <template #icon>
+            <Settings :size="16" />
+          </template>
+        </M3Button>
+      </M3Tooltip>
     </div>
   </header>
 </template>

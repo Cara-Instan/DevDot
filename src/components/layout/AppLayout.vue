@@ -7,6 +7,7 @@ import CommandPalette from './CommandPalette.vue'
 import PrivacyDialog from './PrivacyDialog.vue'
 import PanicDialog from './PanicDialog.vue'
 import SnapshotDialog from './SnapshotDialog.vue'
+import SettingsDialog from './SettingsDialog.vue'
 import PwaInstallBanner from './PwaInstallBanner.vue'
 import { usePwaStore } from '@/stores/pwa'
 
@@ -40,6 +41,7 @@ onMounted(() => {
     <PrivacyDialog />
     <PanicDialog />
     <SnapshotDialog />
+    <SettingsDialog />
     <PwaInstallBanner />
   </div>
 </template>

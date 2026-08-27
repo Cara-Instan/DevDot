@@ -129,6 +129,7 @@ export const useNavigationStore = defineStore('navigation', () => {
   const activeCategory = ref<ToolCategory>('all')
   const isCommandPaletteOpen = ref<boolean>(false)
   const isPrivacyModalOpen = ref<boolean>(false)
+  const isSettingsOpen = ref<boolean>(false)
   const isSnapshotModalOpen = ref<boolean>(false)
   const snapshotModalTab = ref<'export' | 'import'>('export')
   const isMobileNavOpen = ref<boolean>(false)
@@ -297,12 +298,25 @@ export const useNavigationStore = defineStore('navigation', () => {
     isSnapshotModalOpen.value = false
   }
 
+  function openSettings() {
+    isSettingsOpen.value = true
+  }
+
+  function closeSettings() {
+    isSettingsOpen.value = false
+  }
+
+  function toggleSettings() {
+    isSettingsOpen.value = !isSettingsOpen.value
+  }
+
   return {
     // State
     activeToolId,
     activeCategory,
     isCommandPaletteOpen,
     isPrivacyModalOpen,
+    isSettingsOpen,
     isSnapshotModalOpen,
     snapshotModalTab,
     isMobileNavOpen,
@@ -330,6 +344,9 @@ export const useNavigationStore = defineStore('navigation', () => {
     openPrivacyModal,
     closePrivacyModal,
     openSnapshotModal,
-    closeSnapshotModal
+    closeSnapshotModal,
+    openSettings,
+    closeSettings,
+    toggleSettings
   }
 })

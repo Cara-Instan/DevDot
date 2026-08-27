@@ -1,29 +1,42 @@
 import { computed, watch } from 'vue'
-import { usePreferredColorScheme, usePreferredContrast, useStorage } from '@vueuse/core'
+import { usePreferredColorScheme, usePreferredContrast } from '@vueuse/core'
+import { useSettingsStore, type ThemeMode } from '@/stores/settings'
 
-export type ThemeMode = 'light' | 'dark' | 'system'
-
-const themeMode = useStorage<ThemeMode>('devdot-theme-mode', 'system')
-const isHighContrast = useStorage<boolean>('devdot-high-contrast', false)
+export type { ThemeMode }
 
 export function useTheme() {
+  const settingsStore = useSettingsStore()
   const preferredColor = usePreferredColorScheme()
   const preferredContrast = usePreferredContrast()
 
   // System high contrast check
   const systemHighContrast = computed(() => preferredContrast.value === 'more')
 
+  const themeMode = computed({
+    get: () => settingsStore.themeMode,
+    set: (mode: ThemeMode) => {
+      settingsStore.updateSettings({ themeMode: mode })
+    }
+  })
+
+  const isHighContrast = computed({
+    get: () => settingsStore.isHighContrast,
+    set: (val: boolean) => {
+      settingsStore.updateSettings({ isHighContrast: val })
+    }
+  })
+
   const effectiveTheme = computed<'light' | 'dark'>(() => {
-    if (themeMode.value === 'system') {
+    if (settingsStore.themeMode === 'system') {
       return preferredColor.value === 'dark' ? 'dark' : 'light'
     }
-    return themeMode.value
+    return settingsStore.themeMode
   })
 
   const isDark = computed(() => effectiveTheme.value === 'dark')
 
   const isHighContrastActive = computed(() => {
-    return isHighContrast.value || systemHighContrast.value
+    return settingsStore.isHighContrast || systemHighContrast.value
   })
 
   const applyTheme = () => {
@@ -55,7 +68,7 @@ export function useTheme() {
   }, { immediate: true })
 
   const setThemeMode = (mode: ThemeMode) => {
-    themeMode.value = mode
+    settingsStore.updateSettings({ themeMode: mode })
     applyTheme()
   }
 
@@ -68,12 +81,12 @@ export function useTheme() {
   }
 
   const setHighContrast = (enable: boolean) => {
-    isHighContrast.value = enable
+    settingsStore.updateSettings({ isHighContrast: enable })
     applyTheme()
   }
 
   const toggleHighContrast = () => {
-    setHighContrast(!isHighContrast.value)
+    setHighContrast(!settingsStore.isHighContrast)
   }
 
   return {
@@ -89,3 +102,4 @@ export function useTheme() {
     applyTheme
   }
 }
+

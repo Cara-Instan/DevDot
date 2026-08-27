@@ -32,7 +32,7 @@ Dokumen ini adalah **panduan eksekusi bertahap (Handover & Task Division)** untu
 ## ⚙️ FASE 1: Settings Architecture & Preferences Store
 **Tujuan:** Membangun store preferensi pengguna terpusat dan dialog Pengaturan (Settings) komprehensif.
 
-- [ ] **1.1 Buat Store Pengaturan (`src/stores/settings.ts`)**
+- [x] **1.1 Buat Store Pengaturan (`src/stores/settings.ts`)**
   - Definisikan state:
     - `themeMode`: `'dark' | 'light' | 'system'`
     - `isHighContrast`: `boolean`
@@ -44,7 +44,7 @@ Dokumen ini adalah **panduan eksekusi bertahap (Handover & Task Division)** untu
   - Simpan dan sinkronkan state ke `localStorage` (`devdot_settings_v1`).
   - Sediakan actions: `updateSettings()`, `resetToolOrder()`, `setDontAskInstall()`, `wipeAllData()`.
 
-- [ ] **1.2 Buat Modal Pengaturan Terpusat (`src/components/layout/SettingsDialog.vue`)**
+- [x] **1.2 Buat Modal Pengaturan Terpusat (`src/components/layout/SettingsDialog.vue`)**
   - Desain modal Material 3 compact dengan tab/kategori:
     1. **Appearance**: Pilihan Tema (Dark, Light, System), Toggle High Contrast, Ukuran font editor.
     2. **Storage & Privacy**: Tombol **Panic Clear** (bersihkan semua snapshot, storage, clipboard), konfigurasi timer Auto-Purge Clipboard.

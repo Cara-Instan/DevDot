@@ -15,7 +15,8 @@ import {
   Flame,
   ClipboardX,
   DownloadCloud,
-  RefreshCw
+  RefreshCw,
+  Settings
 } from 'lucide-vue-next'
 
 import { useNavigationStore, useSecurityStore, usePwaStore, ToolDefinition } from '@/stores'
@@ -45,6 +46,16 @@ interface CommandItem {
 }
 
 const quickActions: CommandItem[] = [
+  {
+    id: 'action-open-settings',
+    title: 'Preferences & Settings',
+    subtitle: 'Configure theme, editor font, clipboard auto-purge, PWA, and tool order',
+    category: 'Settings',
+    iconComponent: Settings,
+    action: () => {
+      navStore.openSettings()
+    }
+  },
   {
     id: 'action-panic-clear',
     title: 'Panic / Quick Clear All Ephemeral Data',
