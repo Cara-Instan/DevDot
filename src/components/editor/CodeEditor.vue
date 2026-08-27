@@ -36,8 +36,11 @@ import {
   Sparkles
 } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
+import { useSecurityStore } from '@/stores'
+import { openNativeFileDialog, saveNativeFileDialog } from '@/core/native'
 import { getEditorTheme } from './theme'
 import { getLanguageExtension, SupportedLanguage } from './languages'
+
 
 interface Props {
   modelValue?: string
@@ -256,15 +259,21 @@ watch(localWordWrap, (wrap) => {
 })
 
 // Toolbar Actions
+const securityStore = useSecurityStore()
+
 async function handleCopy() {
   if (!props.modelValue) return
   try {
-    await navigator.clipboard.writeText(props.modelValue)
-    isCopied.value = true
-    emit('copy', props.modelValue)
-    setTimeout(() => {
-      isCopied.value = false
-    }, 2000)
+    const success = await securityStore.copyToClipboard(props.modelValue, {
+      label: props.title || 'Code Editor Snippet'
+    })
+    if (success) {
+      isCopied.value = true
+      emit('copy', props.modelValue)
+      setTimeout(() => {
+        isCopied.value = false
+      }, 2000)
+    }
   } catch {
     // Fallback if clipboard API unavailable
     const textArea = document.createElement('textarea')
@@ -289,8 +298,38 @@ function toggleWordWrap() {
   localWordWrap.value = !localWordWrap.value
 }
 
-function triggerFileUpload() {
-  fileInputRef.value?.click()
+async function triggerFileUpload() {
+  const extensionMap: Record<string, string[]> = {
+    json: ['json'],
+    javascript: ['js', 'mjs', 'cjs'],
+    typescript: ['ts', 'mts', 'cts'],
+    xml: ['xml', 'svg'],
+    yaml: ['yaml', 'yml'],
+    markdown: ['md', 'markdown'],
+    html: ['html', 'htm'],
+    css: ['css', 'scss', 'less'],
+    text: ['txt', 'log']
+  }
+
+  const currentExts =
+    props.language && extensionMap[props.language]
+      ? extensionMap[props.language]
+      : ['txt', 'json', 'js', 'ts', 'yaml', 'yml', 'toml', 'csv', 'xml', 'md']
+
+  const files = await openNativeFileDialog({
+    title: `Open ${props.title || 'File'} - DevDot`,
+    multiple: false,
+    filters: [
+      { name: `${props.language ? props.language.toUpperCase() : 'Code'} Files`, extensions: currentExts },
+      { name: 'All Files (*.*)', extensions: ['*'] }
+    ]
+  })
+
+  if (files && files.length > 0) {
+    const file = files[0]
+    emit('update:modelValue', file.content)
+    emit('upload', new File([file.content], file.name), file.content)
+  }
 }
 
 async function handleFileChange(event: Event) {
@@ -333,7 +372,7 @@ async function handleDrop(event: DragEvent) {
   }
 }
 
-function handleDownload() {
+async function handleDownload() {
   if (!props.modelValue) return
   const extensionMap: Record<string, string> = {
     json: 'json',
@@ -347,15 +386,19 @@ function handleDownload() {
     text: 'txt'
   }
   const ext = extensionMap[props.language || 'text'] || 'txt'
-  const blob = new Blob([props.modelValue], { type: 'text/plain;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${props.title ? props.title.toLowerCase().replace(/\s+/g, '_') : 'devdot_export'}.${ext}`
-  a.click()
-  URL.revokeObjectURL(url)
+  const defaultFilename = `${props.title ? props.title.toLowerCase().replace(/\s+/g, '_') : 'devdot_export'}.${ext}`
+
+  await saveNativeFileDialog(props.modelValue, {
+    title: `Save ${props.title || 'File'} - DevDot`,
+    defaultPath: defaultFilename,
+    filters: [
+      { name: `${props.language?.toUpperCase() || 'Text'} File (*.${ext})`, extensions: [ext] },
+      { name: 'All Files (*.*)', extensions: ['*'] }
+    ]
+  })
   emit('download')
 }
+
 
 function focus() {
   editorView?.focus()

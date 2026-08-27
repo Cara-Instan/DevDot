@@ -7,10 +7,13 @@ import {
   ArrowLeftRight,
   FileText,
   Cpu,
-  X
+  X,
+  LayoutDashboard,
+  Search
 } from 'lucide-vue-next'
 import { useNavigationStore, ToolCategory } from '@/stores'
 import { useExecutionEngine } from '@/composables'
+import { M3Tooltip } from '@/components/ui'
 import ToolIcon from './ToolIcon.vue'
 
 const navStore = useNavigationStore()
@@ -28,6 +31,8 @@ const categoryIcons: Record<ToolCategory, any> = {
 const activeCategoryIcon = computed(() => {
   return categoryIcons[navStore.activeCategory] || Boxes
 })
+
+const isOverviewActive = computed(() => navStore.activeToolId === 'system-overview')
 </script>
 
 <template>
@@ -40,7 +45,10 @@ const activeCategoryIcon = computed(() => {
 
   <aside
     class="nav-rail-container"
-    :class="{ 'mobile-open': navStore.isMobileNavOpen }"
+    :class="{
+      'mobile-open': navStore.isMobileNavOpen,
+      'is-collapsed': navStore.isSidebarCollapsed
+    }"
   >
     <!-- Header (Mobile Only Close Button) -->
     <div class="rail-mobile-header">
@@ -57,18 +65,61 @@ const activeCategoryIcon = computed(() => {
       </button>
     </div>
 
+    <!-- Pinned Top Navigation Anchor: Overview / Dashboard -->
+    <div class="rail-top-anchor">
+      <M3Tooltip :text="navStore.isSidebarCollapsed ? 'Overview & Hub Dashboard' : ''">
+        <button
+          type="button"
+          class="overview-nav-btn"
+          :class="{ active: isOverviewActive }"
+          @click="navStore.selectTool('system-overview')"
+        >
+          <div class="overview-icon-box">
+            <LayoutDashboard :size="18" />
+          </div>
+          <div class="overview-text">
+            <span class="overview-title">Overview & Hub</span>
+            <span class="overview-sub">Workspace Dashboard</span>
+          </div>
+          <span class="overview-badge">
+            {{ navStore.tools.filter(t => t.id !== 'system-overview').length }}
+          </span>
+        </button>
+      </M3Tooltip>
+    </div>
+
+    <!-- Rail Search / Filter Input -->
+    <div class="rail-search-box" @click="navStore.isSidebarCollapsed ? navStore.openCommandPalette() : undefined">
+      <Search :size="14" class="rail-search-icon" />
+      <input
+        v-if="!navStore.isSidebarCollapsed"
+        v-model="navStore.searchQuery"
+        type="text"
+        placeholder="Filter tools..."
+        class="rail-search-input"
+      />
+      <button
+        v-if="!navStore.isSidebarCollapsed && navStore.searchQuery"
+        type="button"
+        class="clear-search-btn"
+        @click.stop="navStore.searchQuery = ''"
+      >
+        <X :size="12" />
+      </button>
+    </div>
+
     <!-- Category Filter Bar (M3 Segmented / Pills) -->
-    <div class="category-scroll-container">
+    <div v-if="!navStore.isSidebarCollapsed" class="category-scroll-container">
       <div class="category-pills">
         <button
-          v-for="cat in navStore.categories"
+          v-for="cat in navStore.categories.filter(c => c.id !== 'system')"
           :key="cat.id"
           type="button"
           class="cat-pill"
           :class="{ active: navStore.activeCategory === cat.id }"
           @click="navStore.setCategory(cat.id)"
         >
-          <component :is="categoryIcons[cat.id]" :size="14" />
+          <component :is="categoryIcons[cat.id]" :size="13" />
           <span>{{ cat.label }}</span>
         </button>
       </div>
@@ -76,45 +127,53 @@ const activeCategoryIcon = computed(() => {
 
     <!-- Tools List Scroll View -->
     <nav class="tools-nav-list" aria-label="Tool Navigation">
-      <div class="list-section-header">
+      <div v-if="!navStore.isSidebarCollapsed" class="list-section-header">
         <span class="section-label">
           {{ navStore.activeCategory === 'all' ? 'All Developer Tools' : navStore.categories.find(c => c.id === navStore.activeCategory)?.label }}
         </span>
-        <span class="section-count">{{ navStore.filteredTools.length }}</span>
+        <span class="section-count">
+          {{ navStore.filteredTools.filter(t => t.id !== 'system-overview').length }}
+        </span>
       </div>
 
       <div class="tools-group">
-        <button
-          v-for="tool in navStore.filteredTools"
+        <M3Tooltip
+          v-for="tool in navStore.filteredTools.filter(t => t.id !== 'system-overview')"
           :key="tool.id"
-          type="button"
-          class="tool-item-btn"
-          :class="{ active: navStore.activeToolId === tool.id }"
-          @click="navStore.selectTool(tool.id)"
+          :text="navStore.isSidebarCollapsed ? tool.name : ''"
         >
-          <div class="tool-icon-wrapper">
-            <ToolIcon :name="tool.icon" :size="18" />
-          </div>
+          <button
+            type="button"
+            class="tool-item-btn"
+            :class="{ active: navStore.activeToolId === tool.id }"
+            @click="navStore.selectTool(tool.id)"
+          >
+            <div class="tool-icon-wrapper">
+              <ToolIcon :name="tool.icon" :size="17" />
+            </div>
 
-          <div class="tool-text-meta">
-            <span class="tool-name">{{ tool.name }}</span>
-            <span class="tool-desc-short">{{ tool.description }}</span>
-          </div>
+            <div v-if="!navStore.isSidebarCollapsed" class="tool-text-meta">
+              <span class="tool-name">{{ tool.name }}</span>
+              <span class="tool-desc-short">{{ tool.description }}</span>
+            </div>
 
-          <div v-if="tool.status === 'ready'" class="tool-ready-dot" title="Ready to use" />
-        </button>
+            <div v-if="!navStore.isSidebarCollapsed && tool.status === 'ready'" class="tool-ready-dot" title="Ready to use" />
+          </button>
+        </M3Tooltip>
       </div>
     </nav>
 
     <!-- Rail Footer / Engine Status -->
     <div class="rail-footer">
-      <div class="engine-status-box">
-        <div class="status-indicator-dot" />
-        <div class="status-meta">
-          <span class="engine-name">{{ engine.name }}</span>
-          <span class="platform-name">100% Offline • {{ platform }}</span>
+      <M3Tooltip :text="navStore.isSidebarCollapsed ? `${engine.name} • 100% Offline • ${platform}` : ''">
+        <div class="engine-status-box">
+          <div class="status-indicator-dot" />
+          <div v-if="!navStore.isSidebarCollapsed" class="status-meta">
+            <span class="engine-name">{{ engine.name }}</span>
+            <span class="platform-name">100% Offline • {{ platform }}</span>
+          </div>
         </div>
-      </div>
+      </M3Tooltip>
     </div>
   </aside>
 </template>
@@ -133,7 +192,47 @@ const activeCategoryIcon = computed(() => {
   user-select: none;
   font-family: var(--md-sys-typescale-font-family);
   z-index: 40;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.nav-rail-container.is-collapsed {
+  width: 68px;
+}
+
+.nav-rail-container.is-collapsed .rail-top-anchor {
+  padding: 0.5rem 0.5rem 0.25rem 0.5rem;
+}
+
+.nav-rail-container.is-collapsed .overview-nav-btn {
+  justify-content: center;
+  padding: 0.45rem;
+}
+
+.nav-rail-container.is-collapsed .rail-search-box {
+  margin: 0.25rem 0.5rem;
+  padding: 0.5rem;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.nav-rail-container.is-collapsed .tools-nav-list {
+  padding: 0.5rem 0.35rem;
+  align-items: center;
+}
+
+.nav-rail-container.is-collapsed .tool-item-btn {
+  justify-content: center;
+  padding: 0.45rem;
+}
+
+.nav-rail-container.is-collapsed .rail-footer {
+  padding: 0.75rem 0.5rem;
+  display: flex;
+  justify-content: center;
+}
+
+.nav-rail-container.is-collapsed .engine-status-box {
+  justify-content: center;
 }
 
 .rail-mobile-header {
@@ -161,8 +260,126 @@ const activeCategoryIcon = computed(() => {
   padding: 0.25rem;
 }
 
+/* Top Anchor: Overview button */
+.rail-top-anchor {
+  padding: 0.75rem 0.75rem 0.5rem 0.75rem;
+}
+
+.overview-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--md-sys-shape-corner-medium);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background-color: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.overview-nav-btn:hover {
+  background-color: var(--md-sys-color-surface-container-high);
+  border-color: var(--md-sys-color-primary);
+}
+
+.overview-nav-btn.active {
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
+  font-weight: 600;
+}
+
+.overview-icon-box {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--md-sys-shape-corner-small);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.overview-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.overview-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.overview-sub {
+  font-size: 0.6875rem;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.overview-nav-btn.active .overview-sub {
+  color: var(--md-sys-color-on-primary-container);
+  opacity: 0.85;
+}
+
+.overview-badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 9999px;
+  background-color: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.overview-nav-btn.active .overview-badge {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+/* Search Box */
+.rail-search-box {
+  margin: 0 0.75rem 0.5rem 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.65rem;
+  background-color: var(--md-sys-color-surface-container);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 9999px;
+}
+
+.rail-search-icon {
+  color: var(--md-sys-color-on-surface-variant);
+  flex-shrink: 0;
+}
+
+.rail-search-input {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.75rem;
+  color: var(--md-sys-color-on-surface);
+  width: 100%;
+}
+
+.clear-search-btn {
+  background: transparent;
+  border: none;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+}
+
 .category-scroll-container {
-  padding: 0.75rem 0.875rem 0.5rem 0.875rem;
+  padding: 0.25rem 0.75rem 0.5rem 0.75rem;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   overflow-x: auto;
 }
@@ -170,19 +387,19 @@ const activeCategoryIcon = computed(() => {
 .category-pills {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: 0.3rem;
 }
 
 .cat-pill {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.3rem 0.6rem;
+  gap: 0.3rem;
+  padding: 0.25rem 0.55rem;
   border-radius: 9999px;
   border: 1px solid var(--md-sys-color-outline-variant);
   background-color: var(--md-sys-color-surface-container);
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -194,16 +411,16 @@ const activeCategoryIcon = computed(() => {
 }
 
 .cat-pill.active {
-  background-color: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
-  border-color: var(--md-sys-color-primary);
+  background-color: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  border-color: var(--md-sys-color-outline-variant);
   font-weight: 600;
 }
 
 .tools-nav-list {
   flex: 1;
   overflow-y: auto;
-  padding: 0.75rem 0.625rem;
+  padding: 0.5rem 0.625rem;
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
@@ -213,7 +430,7 @@ const activeCategoryIcon = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.25rem 0.625rem 0.5rem 0.625rem;
+  padding: 0.25rem 0.5rem 0.4rem 0.5rem;
 }
 
 .section-label {
@@ -242,9 +459,9 @@ const activeCategoryIcon = computed(() => {
 .tool-item-btn {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.625rem;
   width: 100%;
-  padding: 0.55rem 0.75rem;
+  padding: 0.5rem 0.65rem;
   border: 1px solid transparent;
   border-radius: var(--md-sys-shape-corner-medium);
   background-color: transparent;
@@ -308,7 +525,7 @@ const activeCategoryIcon = computed(() => {
 
 .tool-item-btn.active .tool-desc-short {
   color: var(--md-sys-color-on-secondary-container);
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .tool-ready-dot {

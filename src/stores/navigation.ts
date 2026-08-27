@@ -16,6 +16,17 @@ export interface ToolDefinition {
 }
 
 export const ALL_TOOLS: ToolDefinition[] = [
+  // Overview / Dashboard (Top Anchor)
+  {
+    id: 'system-overview',
+    name: 'Overview & Dashboard',
+    description: 'Universal developer workspace overview, tool catalog, quick utilities, and engine diagnostics.',
+    category: 'system',
+    icon: 'LayoutDashboard',
+    keywords: ['dashboard', 'system', 'worker', 'overview', 'benchmark', 'status', 'home', 'hub'],
+    status: 'ready'
+  },
+
   // JSON Suite
   {
     id: 'json-format',
@@ -24,7 +35,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
     category: 'json',
     icon: 'FileJson',
     keywords: ['json', 'format', 'prettify', 'minify', 'repair', 'beautify', 'indent'],
-    status: 'planned'
+    status: 'ready'
   },
   {
     id: 'json-schema',
@@ -33,7 +44,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
     category: 'json',
     icon: 'Code2',
     keywords: ['json', 'schema', 'typescript', 'go', 'rust', 'type', 'interface', 'struct'],
-    status: 'planned'
+    status: 'ready'
   },
   {
     id: 'json-diff',
@@ -42,7 +53,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
     category: 'json',
     icon: 'GitCompare',
     keywords: ['json', 'diff', 'compare', 'difference', 'delta', 'visual'],
-    status: 'planned'
+    status: 'ready'
   },
 
   // Crypto & Tokens
@@ -53,7 +64,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
     category: 'crypto',
     icon: 'KeyRound',
     keywords: ['jwt', 'token', 'decode', 'bearer', 'auth', 'signature', 'expiry'],
-    status: 'planned'
+    status: 'ready'
   },
   {
     id: 'hash-generator',
@@ -62,7 +73,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
     category: 'crypto',
     icon: 'Fingerprint',
     keywords: ['hash', 'md5', 'sha256', 'sha512', 'uuid', 'ulid', 'nanoid', 'generator', 'id'],
-    status: 'planned'
+    status: 'ready'
   },
   {
     id: 'encoders-decoders',
@@ -71,7 +82,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
     category: 'crypto',
     icon: 'Binary',
     keywords: ['base64', 'url', 'hex', 'html', 'encode', 'decode', 'data uri'],
-    status: 'planned'
+    status: 'ready'
   },
 
   // Converters & Transpilers
@@ -82,7 +93,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
     category: 'converters',
     icon: 'Terminal',
     keywords: ['curl', 'fetch', 'axios', 'python', 'go', 'requests', 'http', 'api'],
-    status: 'planned'
+    status: 'ready'
   },
   {
     id: 'multi-transpiler',
@@ -91,7 +102,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
     category: 'converters',
     icon: 'Repeat',
     keywords: ['yaml', 'toml', 'csv', 'json', 'transpile', 'convert', 'parser'],
-    status: 'planned'
+    status: 'ready'
   },
   {
     id: 'pii-redactor',
@@ -100,17 +111,6 @@ export const ALL_TOOLS: ToolDefinition[] = [
     category: 'text',
     icon: 'EyeOff',
     keywords: ['pii', 'redact', 'sanitize', 'mask', 'email', 'password', 'token', 'log', 'security'],
-    status: 'planned'
-  },
-
-  // System & Overview
-  {
-    id: 'system-overview',
-    name: 'DevDot Overview & Engine Status',
-    description: 'Universal developer workspace overview, worker benchmarks, and environment diagnostics.',
-    category: 'system',
-    icon: 'LayoutDashboard',
-    keywords: ['dashboard', 'system', 'worker', 'overview', 'benchmark', 'status'],
     status: 'ready'
   }
 ]
@@ -130,11 +130,110 @@ export const useNavigationStore = defineStore('navigation', () => {
   const isCommandPaletteOpen = ref<boolean>(false)
   const isPrivacyModalOpen = ref<boolean>(false)
   const isSnapshotModalOpen = ref<boolean>(false)
+  const snapshotModalTab = ref<'export' | 'import'>('export')
   const isMobileNavOpen = ref<boolean>(false)
+  const isSidebarCollapsed = ref<boolean>(loadSidebarCollapsed())
   const searchQuery = ref<string>('')
 
+  function loadSidebarCollapsed(): boolean {
+    try {
+      const saved = localStorage.getItem('devdot_sidebar_collapsed')
+      if (saved !== null) {
+        return JSON.parse(saved)
+      }
+    } catch {
+      // ignore
+    }
+    return false
+  }
+
+  function toggleSidebarCollapsed() {
+    isSidebarCollapsed.value = !isSidebarCollapsed.value
+    try {
+      localStorage.setItem('devdot_sidebar_collapsed', JSON.stringify(isSidebarCollapsed.value))
+    } catch {
+      // ignore
+    }
+  }
+
+  // Persistent Favorites
+  const favorites = ref<string[]>(loadFavorites())
+  // Persistent Recents
+  const recents = ref<string[]>(loadRecents())
+
+  function loadFavorites(): string[] {
+    try {
+      const saved = localStorage.getItem('devdot_favorites')
+      if (saved) {
+        return JSON.parse(saved)
+      }
+    } catch {
+      // ignore
+    }
+    return ['json-format', 'jwt-debugger', 'hash-generator']
+  }
+
+  function saveFavorites() {
+    try {
+      localStorage.setItem('devdot_favorites', JSON.stringify(favorites.value))
+    } catch {
+      // ignore
+    }
+  }
+
+  function loadRecents(): string[] {
+    try {
+      const saved = localStorage.getItem('devdot_recents')
+      if (saved) {
+        return JSON.parse(saved)
+      }
+    } catch {
+      // ignore
+    }
+    return []
+  }
+
+  function saveRecents() {
+    try {
+      localStorage.setItem('devdot_recents', JSON.stringify(recents.value))
+    } catch {
+      // ignore
+    }
+  }
+
+  function toggleFavorite(toolId: string) {
+    if (toolId === 'system-overview') return
+    const idx = favorites.value.indexOf(toolId)
+    if (idx >= 0) {
+      favorites.value.splice(idx, 1)
+    } else {
+      favorites.value.push(toolId)
+    }
+    saveFavorites()
+  }
+
+  function isFavorite(toolId: string): boolean {
+    return favorites.value.includes(toolId)
+  }
+
+  function recordRecent(toolId: string) {
+    if (!toolId || toolId === 'system-overview') return
+    recents.value = [toolId, ...recents.value.filter((id) => id !== toolId)].slice(0, 6)
+    saveRecents()
+  }
+
+  const favoriteTools = computed(() => {
+    return ALL_TOOLS.filter((t) => favorites.value.includes(t.id))
+  })
+
+  const recentTools = computed(() => {
+    return recents.value
+      .map((id) => ALL_TOOLS.find((t) => t.id === id))
+      .filter((t): t is ToolDefinition => !!t)
+  })
+
   const activeTool = computed(() => {
-    return ALL_TOOLS.find((t) => t.id === activeToolId.value) || ALL_TOOLS[ALL_TOOLS.length - 1]
+    return ALL_TOOLS.find((t) => t.id === activeToolId.value) || ALL_TOOLS[0]
   })
 
   const filteredTools = computed(() => {
@@ -159,6 +258,9 @@ export const useNavigationStore = defineStore('navigation', () => {
     if (found) {
       activeToolId.value = toolId
       isMobileNavOpen.value = false
+      if (toolId !== 'system-overview') {
+        recordRecent(toolId)
+      }
     }
   }
 
@@ -186,7 +288,8 @@ export const useNavigationStore = defineStore('navigation', () => {
     isPrivacyModalOpen.value = false
   }
 
-  function openSnapshotModal() {
+  function openSnapshotModal(tab: 'export' | 'import' = 'export') {
+    snapshotModalTab.value = tab
     isSnapshotModalOpen.value = true
   }
 
@@ -201,16 +304,26 @@ export const useNavigationStore = defineStore('navigation', () => {
     isCommandPaletteOpen,
     isPrivacyModalOpen,
     isSnapshotModalOpen,
+    snapshotModalTab,
     isMobileNavOpen,
+    isSidebarCollapsed,
     searchQuery,
+    favorites,
+    recents,
     // Getters
     activeTool,
     filteredTools,
+    favoriteTools,
+    recentTools,
     tools: ALL_TOOLS,
     categories: CATEGORIES,
     // Actions
     selectTool,
     setCategory,
+    toggleFavorite,
+    isFavorite,
+    recordRecent,
+    toggleSidebarCollapsed,
     openCommandPalette,
     closeCommandPalette,
     toggleCommandPalette,

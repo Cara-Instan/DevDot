@@ -11,15 +11,23 @@ import {
   ShieldCheck,
   Zap,
   Activity,
-  CornerDownLeft
+  CornerDownLeft,
+  Flame,
+  ClipboardX,
+  DownloadCloud,
+  RefreshCw
 } from 'lucide-vue-next'
-import { useNavigationStore, ToolDefinition } from '@/stores'
+
+import { useNavigationStore, useSecurityStore, usePwaStore, ToolDefinition } from '@/stores'
 import { useTheme, useExecutionEngine } from '@/composables'
 import ToolIcon from './ToolIcon.vue'
 
 const navStore = useNavigationStore()
+const securityStore = useSecurityStore()
+const pwaStore = usePwaStore()
 const { isDark, setThemeMode, toggleHighContrast } = useTheme()
 const { execute } = useExecutionEngine()
+
 
 const searchInputRef = ref<HTMLInputElement | null>(null)
 const selectedIndex = ref(0)
@@ -37,6 +45,36 @@ interface CommandItem {
 }
 
 const quickActions: CommandItem[] = [
+  {
+    id: 'action-panic-clear',
+    title: 'Panic / Quick Clear All Ephemeral Data',
+    subtitle: 'Wipe all LocalStorage, session tabs, IndexedDB, and clipboard memory',
+    category: 'Security',
+    iconComponent: Flame,
+    action: () => {
+      securityStore.openPanicModal()
+    }
+  },
+  {
+    id: 'action-purge-clipboard',
+    title: 'Purge System Clipboard Now',
+    subtitle: 'Instantly overwrite and clean the OS clipboard',
+    category: 'Security',
+    iconComponent: ClipboardX,
+    action: () => {
+      securityStore.purgeClipboardNow()
+    }
+  },
+  {
+    id: 'action-privacy-info',
+    title: 'Security Hardening & Zero-Outbound Audit',
+    subtitle: 'Manage clipboard auto-purge timers and verify 100% offline air-gap',
+    category: 'Security',
+    iconComponent: ShieldCheck,
+    action: () => {
+      navStore.openPrivacyModal()
+    }
+  },
   {
     id: 'action-theme-toggle',
     title: 'Toggle Theme (Dark / Light)',
@@ -64,7 +102,7 @@ const quickActions: CommandItem[] = [
     category: 'Snapshot',
     iconComponent: Download,
     action: () => {
-      navStore.openSnapshotModal()
+      navStore.openSnapshotModal('export')
     }
   },
   {
@@ -74,17 +112,7 @@ const quickActions: CommandItem[] = [
     category: 'Snapshot',
     iconComponent: Upload,
     action: () => {
-      navStore.openSnapshotModal()
-    }
-  },
-  {
-    id: 'action-privacy-info',
-    title: 'View Privacy & Zero-Outbound Guarantee',
-    subtitle: 'Verify 100% offline air-gapped local execution',
-    category: 'Privacy',
-    iconComponent: ShieldCheck,
-    action: () => {
-      navStore.openPrivacyModal()
+      navStore.openSnapshotModal('import')
     }
   },
   {
@@ -106,8 +134,29 @@ const quickActions: CommandItem[] = [
     action: () => {
       execute('system', 'benchmark', { count: 150000 })
     }
+  },
+  {
+    id: 'action-pwa-install',
+    title: 'Install DevDot App (PWA)',
+    subtitle: 'Install DevDot as a standalone application on Desktop/Mobile',
+    category: 'Application',
+    iconComponent: DownloadCloud,
+    action: () => {
+      pwaStore.promptInstall()
+    }
+  },
+  {
+    id: 'action-pwa-update',
+    title: 'Check Offline Cache / Update Service Worker',
+    subtitle: 'Reload service worker cache for the latest offline build',
+    category: 'Application',
+    iconComponent: RefreshCw,
+    action: () => {
+      pwaStore.updateApp()
+    }
   }
 ]
+
 
 const toolItems = computed<CommandItem[]>(() => {
   return navStore.tools.map((t: ToolDefinition) => ({
