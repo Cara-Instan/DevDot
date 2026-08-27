@@ -9,9 +9,9 @@ import {
   Cpu,
   X,
   LayoutDashboard,
-  Search,
-  Sparkles
+  Search
 } from 'lucide-vue-next'
+import appLogo from '@/assets/logo.png'
 import { useNavigationStore, ToolCategory } from '@/stores'
 import { useExecutionEngine } from '@/composables'
 import ToolIcon from './ToolIcon.vue'
@@ -90,7 +90,7 @@ function handleSelectOverview() {
         <div class="drawer-header">
           <div class="drawer-brand">
             <div class="drawer-brand-icon">
-              <Sparkles :size="16" />
+              <img :src="appLogo" alt="DevDot Logo" class="drawer-logo-img" />
             </div>
             <div class="drawer-brand-text">
               <span class="brand-title">DevDot Tools</span>
@@ -286,12 +286,17 @@ function handleSelectOverview() {
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  background: linear-gradient(135deg, var(--md-sys-color-primary) 0%, var(--md-sys-color-tertiary, #8b5cf6) 100%);
-  color: var(--md-sys-color-on-primary);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.drawer-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .drawer-brand-text {

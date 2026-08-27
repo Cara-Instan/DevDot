@@ -3,7 +3,6 @@ import { ref, computed, nextTick } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import {
   Menu,
-  Sparkles,
   ChevronDown,
   Search,
   Sun,
@@ -14,6 +13,7 @@ import {
   Check,
   X
 } from 'lucide-vue-next'
+import appLogo from '@/assets/logo.png'
 
 import { M3Tooltip } from '@/components/ui'
 import { useNavigationStore, ToolCategory } from '@/stores'
@@ -100,7 +100,7 @@ const switcherTools = computed(() => {
           @click="toggleDropdown"
         >
           <div class="brand-badge">
-            <Sparkles :size="14" />
+            <img :src="appLogo" alt="DevDot Logo" class="brand-logo-img" />
           </div>
           <span class="brand-name">DevDot</span>
           <span class="breadcrumb-sep">/</span>
@@ -374,12 +374,17 @@ const switcherTools = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  background: linear-gradient(135deg, var(--md-sys-color-primary) 0%, var(--md-sys-color-tertiary, #8b5cf6) 100%);
-  color: var(--md-sys-color-on-primary);
-  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.brand-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .brand-name {

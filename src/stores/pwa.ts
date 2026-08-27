@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useSettingsStore } from './settings'
 
 export interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[]
@@ -11,6 +12,7 @@ export interface BeforeInstallPromptEvent extends Event {
 }
 
 export const usePwaStore = defineStore('pwa', () => {
+  const settingsStore = useSettingsStore()
   const deferredPrompt = ref<BeforeInstallPromptEvent | null>(null)
   const isInstalled = ref(false)
   const isInstallable = ref(false)
@@ -74,8 +76,11 @@ export const usePwaStore = defineStore('pwa', () => {
     }
   }
 
-  function dismissInstall() {
+  function dismissInstall(dontAskAgain = false) {
     isDismissed.value = true
+    if (dontAskAgain) {
+      settingsStore.setDontAskInstall(true)
+    }
   }
 
   function registerUpdateHandler(updateFn: (reloadPage?: boolean) => Promise<void>) {
@@ -92,6 +97,9 @@ export const usePwaStore = defineStore('pwa', () => {
   }
 
   const showInstallBanner = computed(() => {
+    if (settingsStore.dontAskAgainInstallPrompt) {
+      return false
+    }
     return isInstallable.value && !isInstalled.value && !isDismissed.value
   })
 

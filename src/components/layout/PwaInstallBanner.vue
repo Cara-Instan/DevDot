@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Download, RefreshCw, X, Sparkles } from 'lucide-vue-next'
+import { Download, RefreshCw, X } from 'lucide-vue-next'
+import appLogo from '@/assets/logo.png'
 import { usePwaStore } from '@/stores/pwa'
 import { M3Button } from '@/components/ui'
 
@@ -11,6 +12,14 @@ async function handleInstall() {
 
 async function handleUpdate() {
   await pwaStore.updateApp()
+}
+
+function handleDismiss() {
+  pwaStore.dismissInstall(false)
+}
+
+function handleDontAskAgain() {
+  pwaStore.dismissInstall(true)
 }
 </script>
 
@@ -50,7 +59,7 @@ async function handleUpdate() {
       >
         <div class="banner-content">
           <div class="banner-icon-badge install-badge">
-            <Sparkles :size="18" />
+            <img :src="appLogo" alt="DevDot Logo" class="banner-logo-img" />
           </div>
           <div class="banner-text">
             <span class="banner-title">Install DevDot App</span>
@@ -68,9 +77,19 @@ async function handleUpdate() {
 
           <button
             type="button"
+            class="secondary-text-btn"
+            title="Never show automatic install banner again"
+            @click="handleDontAskAgain"
+          >
+            Don't ask again
+          </button>
+
+          <button
+            type="button"
             class="dismiss-btn"
             aria-label="Dismiss install notice"
-            @click="pwaStore.dismissInstall"
+            title="Dismiss"
+            @click="handleDismiss"
           >
             <X :size="16" />
           </button>
@@ -136,8 +155,13 @@ async function handleUpdate() {
 }
 
 .install-badge {
-  background: linear-gradient(135deg, var(--md-sys-color-primary) 0%, #8b5cf6 100%);
-  color: var(--md-sys-color-on-primary);
+  overflow: hidden;
+}
+
+.banner-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .update-badge {
@@ -170,6 +194,24 @@ async function handleUpdate() {
   align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
+}
+
+.secondary-text-btn {
+  background: transparent;
+  border: none;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.35rem 0.55rem;
+  border-radius: var(--md-sys-shape-corner-small, 6px);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.secondary-text-btn:hover {
+  background-color: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
 }
 
 .dismiss-btn {

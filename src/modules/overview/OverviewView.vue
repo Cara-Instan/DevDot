@@ -22,6 +22,7 @@ import {
   DEFAULT_TOOL_ORDER,
   ToolCategory
 } from '@/stores'
+import appLogo from '@/assets/logo.png'
 
 const navStore = useNavigationStore()
 const settingsStore = useSettingsStore()
@@ -203,10 +204,15 @@ function resetDragState() {
     <!-- Compact Intro Banner -->
     <header class="overview-header">
       <div class="header-left">
-        <h1 class="overview-title">Developer Toolkit</h1>
-        <p class="overview-subtitle">
-          Air-gapped offline developer utilities, crypto inspection, formatters, and data converters.
-        </p>
+        <div class="overview-logo-badge">
+          <img :src="appLogo" alt="DevDot Logo" class="overview-logo-img" />
+        </div>
+        <div class="header-titles">
+          <h1 class="overview-title">Developer Toolkit</h1>
+          <p class="overview-subtitle">
+            Air-gapped offline developer utilities, crypto inspection, formatters, and data converters.
+          </p>
+        </div>
       </div>
       <div class="header-right">
         <span class="offline-pill">
@@ -499,8 +505,31 @@ function resetDragState() {
 
 .header-left {
   display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.overview-logo-badge {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.overview-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.header-titles {
+  display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.15rem;
 }
 
 .overview-title {

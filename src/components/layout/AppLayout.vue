@@ -81,7 +81,7 @@ onMounted(() => {
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 1rem 1.25rem;
+  padding: 0.625rem 0.875rem;
   background-color: var(--md-sys-color-surface);
   display: flex;
   flex-direction: column;
