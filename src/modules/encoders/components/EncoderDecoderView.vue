@@ -6,20 +6,15 @@ import {
   Hash,
   Code,
   ArrowLeftRight,
-  Upload,
   Download,
-  Sparkles
+  RotateCcw,
+  CheckCircle2
 } from 'lucide-vue-next'
 import {
-  M3Button,
-  M3Card,
-  M3Switch,
-  M3TextField,
   SplitEditor
 } from '@/components'
 import { useExecutionEngine } from '@/composables'
 import { useSnapshotStore } from '@/stores'
-import { fileToBase64 } from '../services/base64-service'
 import type {
   EncoderMode,
   ConversionDirection,
@@ -32,10 +27,12 @@ import type {
 const { isExecuting, execute } = useExecutionEngine()
 const snapshotStore = useSnapshotStore()
 
+const DEFAULT_SAMPLE = 'Hello DevDot! 100% Privacy-First Universal Developer Toolkit 🚀'
+
 const initialSaved = snapshotStore.getToolState('encoders-decoders', {
   activeMode: 'base64' as EncoderMode,
   direction: 'encode' as ConversionDirection,
-  inputText: 'Hello DevDot! 100% Privacy-First Universal Developer Toolkit 🚀',
+  inputText: DEFAULT_SAMPLE,
   outputText: '',
   liveTransform: true,
   base64UrlSafe: false,
@@ -76,11 +73,7 @@ const hexUppercase = ref(initialSaved.hexUppercase)
 const htmlMode = ref<'named' | 'decimal' | 'hex'>(initialSaved.htmlMode)
 const htmlNonAsciiOnly = ref(initialSaved.htmlNonAsciiOnly)
 
-// File Upload State for Base64
-const fileInputRef = ref<HTMLInputElement | null>(null)
-const uploadedFileName = ref<string | null>(null)
-const uploadedFileSize = ref<number | null>(null)
-const isDragging = ref(false)
+let isHydrating = false
 
 // Sync to snapshot store
 watch(
@@ -102,6 +95,7 @@ watch(
     htmlNonAsciiOnly
   ],
   () => {
+    if (isHydrating) return
     snapshotStore.setToolState('encoders-decoders', {
       activeMode: activeMode.value,
       direction: direction.value,
@@ -127,7 +121,8 @@ watch(
 watch(
   () => snapshotStore.toolStates['encoders-decoders'],
   (newState) => {
-    if (newState) {
+    if (newState && !isHydrating) {
+      isHydrating = true
       if (newState.activeMode !== undefined) activeMode.value = newState.activeMode
       if (newState.direction !== undefined) direction.value = newState.direction
       if (newState.inputText !== undefined) inputText.value = newState.inputText
@@ -143,35 +138,40 @@ watch(
       if (newState.hexUppercase !== undefined) hexUppercase.value = newState.hexUppercase
       if (newState.htmlMode !== undefined) htmlMode.value = newState.htmlMode
       if (newState.htmlNonAsciiOnly !== undefined) htmlNonAsciiOnly.value = newState.htmlNonAsciiOnly
+      isHydrating = false
     }
   },
   { deep: true }
 )
 
 // Modes configuration
-const MODES: { id: EncoderMode; label: string; icon: any; description: string }[] = [
+const MODES: { id: EncoderMode; label: string; icon: any; dotClass: string; description: string }[] = [
   {
     id: 'base64',
     label: 'Base64',
     icon: Binary,
+    dotClass: 'b64-dot',
     description: 'UTF-8 Unicode Safe, URL-Safe Base64, and File Data URI encoder/decoder'
   },
   {
     id: 'url',
     label: 'URL',
     icon: Globe,
+    dotClass: 'url-dot',
     description: 'URL Component, Full URI, and RFC 3986 compliant encoder/decoder'
   },
   {
     id: 'hex',
     label: 'Hexadecimal',
     icon: Hash,
+    dotClass: 'hex-dot',
     description: 'UTF-8 text to Hex byte representations with custom delimiters'
   },
   {
     id: 'html-entities',
     label: 'HTML Entities',
     icon: Code,
+    dotClass: 'html-dot',
     description: 'Named entities (&amp;, &lt;), decimal (&#60;), and hex (&#x3C;) encoder/decoder'
   }
 ]
@@ -250,44 +250,17 @@ function handleSwap() {
   }
 }
 
-// File drop & upload handling for Base64
-async function processFile(file: File) {
-  try {
-    uploadedFileName.value = file.name
-    uploadedFileSize.value = file.size
-    base64Mime.value = file.type || 'application/octet-stream'
-
-    const res = await fileToBase64(file)
-    if (base64DataUri.value) {
-      inputText.value = res.dataUri
-    } else {
-      inputText.value = res.base64
-    }
-    // Set to decode if user uploaded base64 data, or encode if viewing file
-    if (direction.value === 'decode') {
-      await handleTransform()
-    }
-  } catch (err: any) {
-    error.value = `Failed to process file: ${err.message}`
-  }
+function handleLoadSample() {
+  inputText.value = DEFAULT_SAMPLE
+  direction.value = 'encode'
+  handleTransform()
 }
 
-function handleFileSelect(event: Event) {
-  const target = event.target as HTMLInputElement
-  if (target.files && target.files[0]) {
-    processFile(target.files[0])
-  }
-}
-
-function triggerFileInput() {
-  fileInputRef.value?.click()
-}
-
-function handleDrop(e: DragEvent) {
-  isDragging.value = false
-  if (e.dataTransfer?.files && e.dataTransfer.files[0]) {
-    processFile(e.dataTransfer.files[0])
-  }
+function handleClear() {
+  inputText.value = ''
+  outputText.value = ''
+  error.value = null
+  executionTimeMs.value = null
 }
 
 // Download Decoded Output as File
@@ -333,23 +306,23 @@ watch(
 
 <template>
   <div class="encoder-decoder-view">
-    <!-- Mode Selection Header Bar -->
+    <!-- Compact 1-Line Mode Selection Header Bar -->
     <div class="mode-selector-bar">
-      <div class="mode-tabs">
-        <button
-          v-for="mode in MODES"
-          :key="mode.id"
-          type="button"
-          class="mode-tab-btn"
-          :class="{ active: activeMode === mode.id }"
-          @click="activeMode = mode.id"
-        >
-          <component :is="mode.icon" :size="16" class="tab-icon" />
-          <span>{{ mode.label }}</span>
-        </button>
-      </div>
+      <div class="toolbar-left">
+        <div class="mode-tabs">
+          <button
+            v-for="mode in MODES"
+            :key="mode.id"
+            type="button"
+            class="mode-tab-btn"
+            :class="{ active: activeMode === mode.id }"
+            @click="activeMode = mode.id"
+          >
+            <span class="lang-dot" :class="mode.dotClass"></span>
+            <span>{{ mode.label }}</span>
+          </button>
+        </div>
 
-      <div class="direction-control">
         <div class="direction-toggle">
           <button
             type="button"
@@ -369,149 +342,88 @@ watch(
           </button>
         </div>
 
-        <M3Button
-          variant="tonal"
-          class="swap-btn"
+        <!-- Mode Options Inline -->
+        <div class="inline-options">
+          <template v-if="activeMode === 'base64'">
+            <label class="compact-check"><input v-model="base64UrlSafe" type="checkbox" /> URL-Safe</label>
+            <label class="compact-check"><input v-model="base64Pad" type="checkbox" /> Padding</label>
+            <label class="compact-check"><input v-model="base64DataUri" type="checkbox" /> Data URI</label>
+          </template>
+          <template v-else-if="activeMode === 'url'">
+            <select v-model="urlMode" class="compact-select">
+              <option value="component">Component</option>
+              <option value="full-uri">Full URI</option>
+              <option value="rfc3986">RFC 3986</option>
+            </select>
+            <label class="compact-check"><input v-model="urlSpaceAsPlus" type="checkbox" /> Space as '+'</label>
+          </template>
+          <template v-else-if="activeMode === 'hex'">
+            <select v-model="hexDelimiter" class="compact-select">
+              <option value="space">Space (FF 00)</option>
+              <option value="none">None (FF00)</option>
+              <option value="0x">0x Prefix</option>
+              <option value="comma">Comma</option>
+              <option value="colon">Colon</option>
+            </select>
+            <label class="compact-check"><input v-model="hexUppercase" type="checkbox" /> Uppercase</label>
+          </template>
+          <template v-else-if="activeMode === 'html-entities'">
+            <select v-model="htmlMode" class="compact-select">
+              <option value="named">Named (&amp;lt;)</option>
+              <option value="decimal">Decimal (&#60;)</option>
+              <option value="hex">Hex (&#x3C;)</option>
+            </select>
+          </template>
+        </div>
+      </div>
+
+      <div class="toolbar-right">
+        <span v-if="executionTimeMs !== null" class="exec-badge">
+          {{ executionTimeMs }} ms
+        </span>
+
+        <button
+          type="button"
+          class="compact-action-btn tonal-btn"
           title="Swap Output to Input and invert direction"
           :disabled="!outputText"
           @click="handleSwap"
         >
-          <template #icon>
-            <ArrowLeftRight :size="14" />
-          </template>
-          Swap
-        </M3Button>
+          <ArrowLeftRight :size="13" />
+          <span>Swap</span>
+        </button>
+
+        <button
+          v-if="outputText"
+          type="button"
+          class="compact-action-btn text-btn"
+          title="Download Result as Text File"
+          @click="handleDownloadDecoded"
+        >
+          <Download :size="13" />
+          <span>Save</span>
+        </button>
+
+        <button
+          type="button"
+          class="compact-action-btn text-btn"
+          title="Load default sample"
+          @click="handleLoadSample"
+        >
+          Sample
+        </button>
+
+        <button
+          type="button"
+          class="compact-action-btn text-btn"
+          title="Clear"
+          @click="handleClear"
+        >
+          <RotateCcw :size="13" />
+          <span>Clear</span>
+        </button>
       </div>
     </div>
-
-    <!-- Mode Options Configuration Card -->
-    <M3Card variant="filled" padding="medium" class="options-card">
-      <div class="options-header">
-        <div class="desc-row">
-          <Sparkles :size="16" class="sparkle-icon" />
-          <span class="mode-desc-text">{{ currentModeDetails.description }}</span>
-        </div>
-
-        <div class="live-toggle">
-          <M3Switch v-model="liveTransform" label="Live Conversion" />
-        </div>
-      </div>
-
-      <div class="options-grid">
-        <!-- BASE64 OPTIONS -->
-        <template v-if="activeMode === 'base64'">
-          <div class="option-item">
-            <M3Switch
-              v-model="base64UrlSafe"
-              label="URL-Safe Base64 (+ to -, / to _)"
-            />
-          </div>
-          <div class="option-item">
-            <M3Switch
-              v-model="base64Pad"
-              label="Keep Padding (=)"
-            />
-          </div>
-          <div class="option-item">
-            <M3Switch
-              v-model="base64DataUri"
-              label="Data URI Format (data:...;base64,...)"
-            />
-          </div>
-          <div v-if="base64DataUri" class="option-item full-width">
-            <M3TextField
-              v-model="base64Mime"
-              label="MIME Type"
-              supporting-text="e.g. text/plain, image/png, application/json"
-            />
-          </div>
-
-          <!-- File Dropzone for Base64 -->
-          <div class="file-dropzone-row full-width">
-            <input
-              ref="fileInputRef"
-              type="file"
-              class="hidden-file-input"
-              @change="handleFileSelect"
-            />
-            <div
-              class="dropzone-box"
-              :class="{ 'is-dragging': isDragging }"
-              @dragover.prevent="isDragging = true"
-              @dragleave.prevent="isDragging = false"
-              @drop.prevent="handleDrop"
-              @click="triggerFileInput"
-            >
-              <Upload :size="20" class="upload-icon" />
-              <div class="dropzone-text">
-                <span class="drop-title">
-                  {{ uploadedFileName ? `File Loaded: ${uploadedFileName} (${uploadedFileSize} bytes)` : 'Click or Drag & Drop file to convert to Base64 / Data URI' }}
-                </span>
-                <span class="drop-subtitle">
-                  100% processed in local browser memory (zero network upload)
-                </span>
-              </div>
-            </div>
-          </div>
-        </template>
-
-        <!-- URL OPTIONS -->
-        <template v-if="activeMode === 'url'">
-          <div class="option-item">
-            <label class="custom-select-label">Encoding Standard</label>
-            <select v-model="urlMode" class="custom-select">
-              <option value="component">Component (encodeURIComponent)</option>
-              <option value="full-uri">Full URI (encodeURI)</option>
-              <option value="rfc3986">RFC 3986 (Strict)</option>
-            </select>
-          </div>
-          <div class="option-item">
-            <M3Switch
-              v-model="urlSpaceAsPlus"
-              label="Encode spaces as '+' (Form style)"
-            />
-          </div>
-        </template>
-
-        <!-- HEX OPTIONS -->
-        <template v-if="activeMode === 'hex'">
-          <div class="option-item">
-            <label class="custom-select-label">Byte Delimiter</label>
-            <select v-model="hexDelimiter" class="custom-select">
-              <option value="space">Space (FF 00 AB)</option>
-              <option value="none">None (FF00AB)</option>
-              <option value="0x">0x Prefix (0xFF 0x00 0xAB)</option>
-              <option value="comma">Comma (FF, 00, AB)</option>
-              <option value="colon">Colon (FF:00:AB)</option>
-            </select>
-          </div>
-          <div class="option-item">
-            <M3Switch
-              v-model="hexUppercase"
-              label="Uppercase Hex Characters (A-F)"
-            />
-          </div>
-        </template>
-
-        <!-- HTML ENTITIES OPTIONS -->
-        <template v-if="activeMode === 'html-entities'">
-          <div class="option-item">
-            <label class="custom-select-label">Entity Format</label>
-            <select v-model="htmlMode" class="custom-select">
-              <option value="named">Named Entities (&amp;lt;, &amp;copy;)</option>
-              <option value="decimal">Decimal Numeric (&amp;#60;, &amp;#169;)</option>
-              <option value="hex">Hexadecimal Numeric (&amp;#x3C;, &amp;#xA9;)</option>
-            </select>
-          </div>
-          <div class="option-item">
-            <M3Switch
-              v-model="htmlNonAsciiOnly"
-              label="Encode Non-ASCII / Special Only"
-            />
-          </div>
-        </template>
-      </div>
-    </M3Card>
 
     <!-- Main Split-Pane Editor Workspace -->
     <div class="editor-workspace">
@@ -526,24 +438,33 @@ watch(
         :error="error"
         :execution-time-ms="executionTimeMs"
         :show-execute-button="!liveTransform"
-        :execute-button-label="`${direction === 'encode' ? 'Encode' : 'Decode'} ${currentModeDetails.label}`"
-        height="calc(100vh - 360px)"
+        :execute-button-label="`${direction === 'encode' ? 'Encode' : 'Decode'}`"
+        height="100%"
         @execute="handleTransform"
-      >
-        <template #extra-actions>
-          <M3Button
-            v-if="outputText"
-            variant="tonal"
-            title="Download Result as Text File"
-            @click="handleDownloadDecoded"
-          >
-            <template #icon>
-              <Download :size="14" />
-            </template>
-            Save File
-          </M3Button>
-        </template>
-      </SplitEditor>
+      />
+    </div>
+
+    <!-- Stats & Information Bar -->
+    <div v-if="outputText && !error" class="stats-footer">
+      <div class="stat-pill">
+        <span class="stat-label">Mode:</span>
+        <span class="stat-val uppercase">{{ activeMode }}</span>
+      </div>
+
+      <div class="stat-pill">
+        <span class="stat-label">Direction:</span>
+        <span class="stat-val uppercase">{{ direction }}</span>
+      </div>
+
+      <div class="stat-pill">
+        <span class="stat-label">Output Length:</span>
+        <span class="stat-val">{{ outputText.length }} chars</span>
+      </div>
+
+      <div class="stat-pill success-tag">
+        <CheckCircle2 :size="13" />
+        <span>Transformed Cleanly</span>
+      </div>
     </div>
   </div>
 </template>
@@ -552,42 +473,56 @@ watch(
 .encoder-decoder-view {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 0.375rem;
   width: 100%;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .mode-selector-bar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
-  background-color: var(--md-sys-color-surface-container-low);
+  gap: 0.5rem;
+  background-color: var(--md-sys-color-surface-container);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-medium);
-  padding: 0.5rem 0.75rem;
-  flex-wrap: wrap;
+  border-radius: var(--md-sys-shape-corner-small);
+  padding: 0.25rem 0.625rem;
+  min-height: 36px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+  flex-shrink: 0;
 }
 
 .mode-tabs {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
+  gap: 0.25rem;
 }
 
 .mode-tab-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.85rem;
-  border-radius: var(--md-sys-shape-corner-small);
-  border: 1px solid transparent;
-  background-color: transparent;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--md-sys-shape-corner-full);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background-color: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 0.8125rem;
-  font-weight: 600;
+  font-size: 0.6875rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .mode-tab-btn:hover {
@@ -596,167 +531,173 @@ watch(
 }
 
 .mode-tab-btn.active {
-  background-color: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
   border-color: var(--md-sys-color-primary);
+  font-weight: 600;
 }
 
-.tab-icon {
+.lang-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   flex-shrink: 0;
 }
 
-.direction-control {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
+.b64-dot  { background-color: #3b82f6; }
+.url-dot  { background-color: #10b981; }
+.hex-dot  { background-color: #8b5cf6; }
+.html-dot { background-color: #f59e0b; }
 
 .direction-toggle {
-  display: flex;
-  background-color: var(--md-sys-color-surface-container-highest);
-  border-radius: var(--md-sys-shape-corner-small);
-  padding: 0.2rem;
+  display: inline-flex;
+  background-color: var(--md-sys-color-surface-container-high);
+  border-radius: var(--md-sys-shape-corner-full);
+  padding: 2px;
   border: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .dir-btn {
-  padding: 0.35rem 0.75rem;
-  border-radius: calc(var(--md-sys-shape-corner-small) - 2px);
+  padding: 0.18rem 0.5rem;
+  border-radius: var(--md-sys-shape-corner-full);
   border: none;
   background: transparent;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.6875rem;
+  font-weight: 500;
   color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .dir-btn.active {
   background-color: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
-}
-
-.swap-btn {
-  font-size: 0.75rem;
-}
-
-.options-card {
-  border-radius: var(--md-sys-shape-corner-medium);
-}
-
-.options-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.75rem;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.desc-row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.sparkle-icon {
-  color: var(--md-sys-color-primary);
-}
-
-.mode-desc-text {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.options-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 1rem;
-  align-items: center;
-}
-
-.option-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.option-item.full-width {
-  grid-column: 1 / -1;
-}
-
-.custom-select-label {
-  font-size: 0.75rem;
   font-weight: 600;
-  color: var(--md-sys-color-on-surface-variant);
 }
 
-.custom-select {
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--md-sys-shape-corner-small);
-  border: 1px solid var(--md-sys-color-outline);
-  background-color: var(--md-sys-color-surface-container);
-  color: var(--md-sys-color-on-surface);
-  font-size: 0.8125rem;
-  font-weight: 500;
-  outline: none;
-  cursor: pointer;
-}
-
-.custom-select:focus {
-  border-color: var(--md-sys-color-primary);
-}
-
-.hidden-file-input {
-  display: none;
-}
-
-.file-dropzone-row {
-  margin-top: 0.25rem;
-}
-
-.dropzone-box {
+.inline-options {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
-  padding: 0.75rem 1rem;
-  border: 1.5px dashed var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-medium);
-  background-color: var(--md-sys-color-surface-container);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.dropzone-box:hover,
-.dropzone-box.is-dragging {
-  border-color: var(--md-sys-color-primary);
-  background-color: var(--md-sys-color-surface-container-high);
-}
-
-.upload-icon {
-  color: var(--md-sys-color-primary);
-  flex-shrink: 0;
-}
-
-.dropzone-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.drop-title {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--md-sys-color-on-surface);
-}
-
-.drop-subtitle {
+  gap: 0.45rem;
+  padding-left: 0.35rem;
+  border-left: 1px solid var(--md-sys-color-outline-variant);
   font-size: 0.6875rem;
   color: var(--md-sys-color-on-surface-variant);
 }
 
+.compact-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.compact-select {
+  height: 24px;
+  padding: 0 0.35rem;
+  font-size: 0.6875rem;
+  background-color: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  color: var(--md-sys-color-on-surface);
+  outline: none;
+}
+
+.exec-badge {
+  font-size: 0.6875rem;
+  font-family: var(--md-sys-typescale-code-font, monospace);
+  color: var(--md-sys-color-on-surface-variant);
+  background-color: var(--md-sys-color-surface-container-high);
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.compact-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: var(--md-sys-shape-corner-full);
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.tonal-btn {
+  background-color: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.tonal-btn:hover:not(:disabled) {
+  background-color: var(--md-sys-color-surface-container-highest);
+}
+
+.text-btn {
+  background-color: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.text-btn:hover:not(:disabled) {
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+}
+
+.compact-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .editor-workspace {
   width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Stats Footer */
+.stats-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  background-color: var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: 0.6875rem;
+  color: var(--md-sys-color-on-surface-variant);
+  flex-wrap: wrap;
+}
+
+.stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.stat-label {
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+.stat-val {
+  font-family: var(--md-sys-typescale-code-font, monospace);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.stat-val.uppercase {
+  text-transform: uppercase;
+}
+
+.success-tag {
+  color: var(--md-sys-color-primary, #6dd58c);
+  font-weight: 500;
+  margin-left: auto;
 }
 </style>
