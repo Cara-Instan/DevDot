@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="pwa-maskable-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <!-- Full bleed background for safe-zone masking -->
+  <rect width="512" height="512" fill="url(#pwa-maskable-grad)"/>
+  
+  <!-- Safe Zone content within inner 80% circle (radius ~204 centered at 256,256) -->
+  <g transform="translate(0, 0)">
+    <path d="M196 212L152 256L196 300" stroke="#ffffff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M316 212L360 256L316 300" stroke="#ffffff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <circle cx="256" cy="256" r="28" fill="#ffffff"/>
+    <path d="M340 160L346 172L358 178L346 184L340 196L334 184L322 178L334 172Z" fill="#e0e7ff" opacity="0.9"/>
+  </g>
+</svg>

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="pwa-grad-512" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="50%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#818cf8" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#818cf8" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow-512" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#0f172a"/>
+  <circle cx="256" cy="256" r="220" fill="url(#glow)"/>
+  <rect x="56" y="56" width="400" height="400" rx="92" fill="url(#pwa-grad-512)" filter="url(#shadow-512)"/>
+  
+  <!-- DevDot Central Emblem: Clean Code Angle Brackets & Centered Dot -->
+  <path d="M184 200L132 256L184 312" stroke="#ffffff" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M328 200L380 256L328 312" stroke="#ffffff" stroke-width="32" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <circle cx="256" cy="256" r="32" fill="#ffffff"/>
+  
+  <!-- Sparkles -->
+  <path d="M360 136L368 152L384 160L368 168L360 184L352 168L336 160L352 152Z" fill="#e0e7ff" opacity="0.9"/>
+  <circle cx="152" cy="360" r="14" fill="#c7d2fe" opacity="0.8"/>
+</svg>
