@@ -1,37 +1,24 @@
-import type { ExecutionPayload, TaskHandler } from '../types/execution'
+import type { ExecutionPayload } from '../types/execution'
+import {
+  getTaskHandler,
+  hasTaskHandler,
+  registerTaskHandler,
+  unregisterTaskHandler
+} from './task-registry'
 
-const handlerRegistry = new Map<string, TaskHandler>()
-
-function getHandlerKey(tool: string, action: string): string {
-  return `${tool.trim().toLowerCase()}:${action.trim().toLowerCase()}`
+// Re-export registry functions for backward compatibility
+export {
+  registerTaskHandler,
+  unregisterTaskHandler,
+  hasTaskHandler
 }
 
-/**
- * Register a task handler for a specific tool and action
- */
-export function registerTaskHandler<T = any, R = any>(
-  tool: string,
-  action: string,
-  handler: TaskHandler<T, R>
-): void {
-  const key = getHandlerKey(tool, action)
-  handlerRegistry.set(key, handler)
-}
-
-/**
- * Unregister a task handler
- */
-export function unregisterTaskHandler(tool: string, action: string): boolean {
-  const key = getHandlerKey(tool, action)
-  return handlerRegistry.delete(key)
-}
-
-/**
- * Check if a task handler is registered
- */
-export function hasTaskHandler(tool: string, action: string): boolean {
-  return handlerRegistry.has(getHandlerKey(tool, action))
-}
+// Import all module handlers to ensure they are registered
+import '../../modules/json/handlers/json-handlers'
+import '../../modules/encoders/handlers/encoders-handlers'
+import '../../modules/crypto/handlers/crypto-handlers'
+import '../../modules/converters/handlers/converters-handlers'
+import '../../modules/redactor/handlers/redactor-handlers'
 
 /**
  * Dispatches and executes the appropriate task handler
@@ -40,8 +27,7 @@ export async function dispatchTask<T = any, R = any>(
   payload: ExecutionPayload<T>
 ): Promise<R> {
   const { tool, action, data, options } = payload
-  const key = getHandlerKey(tool, action)
-  const handler = handlerRegistry.get(key)
+  const handler = getTaskHandler(tool, action)
 
   if (!handler) {
     throw new Error(`[ExecutionEngine] No handler registered for task '${tool}:${action}'`)

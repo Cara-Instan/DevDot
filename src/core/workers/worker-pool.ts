@@ -22,6 +22,42 @@ export interface WorkerPoolOptions {
   poolSize?: number
 }
 
+/**
+ * Deep clones serializable objects while unwrapping Vue reactivity Proxies,
+ * preventing DataCloneError when posting messages to Web Workers.
+ */
+export function deepCloneSerializable<T>(value: T): T {
+  if (value === null || typeof value !== 'object') {
+    return value
+  }
+
+  // Handle TypedArrays & Binary buffers
+  if (value instanceof Uint8Array) {
+    return new Uint8Array(value) as unknown as T
+  }
+  if (value instanceof ArrayBuffer) {
+    return value.slice(0) as unknown as T
+  }
+  if (value instanceof Date) {
+    return new Date(value.getTime()) as unknown as T
+  }
+  if (value instanceof RegExp) {
+    return new RegExp(value.source, value.flags) as unknown as T
+  }
+
+  // Handle Arrays
+  if (Array.isArray(value)) {
+    return value.map((item) => deepCloneSerializable(item)) as unknown as T
+  }
+
+  // Handle Objects (including Vue reactive proxies)
+  const result: Record<string, any> = {}
+  for (const [key, val] of Object.entries(value)) {
+    result[key] = deepCloneSerializable(val)
+  }
+  return result as T
+}
+
 export class WorkerPool {
   private workers: WorkerInstance[] = []
   private taskQueue: PendingTask[] = []
@@ -154,7 +190,7 @@ export class WorkerPool {
 
     const message: WorkerTaskMessage = {
       type: 'EXECUTE',
-      payload: task.payload
+      payload: deepCloneSerializable(task.payload)
     }
 
     workerInstance.worker.postMessage(message)
@@ -177,7 +213,7 @@ export class WorkerPool {
 
     return new Promise<ExecutionResult<R>>((resolve, reject) => {
       const task: PendingTask = {
-        payload: { ...payload },
+        payload: deepCloneSerializable(payload),
         resolve: resolve as (result: ExecutionResult) => void,
         reject
       }
