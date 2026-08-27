@@ -1,22 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
   <defs>
     <!-- Background Gradient -->
-    <linearGradient id="pwa-bg-512" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="logo-bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#262930"/>
       <stop offset="50%" stop-color="#1e2026"/>
       <stop offset="100%" stop-color="#141518"/>
     </linearGradient>
 
     <!-- Clip path to squircle -->
-    <clipPath id="pwa-squircle-clip-512">
+    <clipPath id="logo-squircle-clip">
       <rect x="18" y="18" width="476" height="476" rx="108" ry="108"/>
     </clipPath>
   </defs>
 
   <!-- Base Squircle with Clip -->
-  <g clip-path="url(#pwa-squircle-clip-512)">
+  <g clip-path="url(#logo-squircle-clip)">
     <!-- Dark Slate Background -->
-    <rect x="18" y="18" width="476" height="476" fill="url(#pwa-bg-512)"/>
+    <rect x="18" y="18" width="476" height="476" fill="url(#logo-bg-grad)"/>
 
     <!-- Grid Lines (Blueprint Layout) -->
     <g stroke="#353b47" stroke-width="2" opacity="0.85">

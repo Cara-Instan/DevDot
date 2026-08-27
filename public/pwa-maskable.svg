@@ -1,19 +1,83 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="pwa-maskable-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4f46e5"/>
-      <stop offset="50%" stop-color="#6366f1"/>
-      <stop offset="100%" stop-color="#7c3aed"/>
+    <!-- Background Gradient -->
+    <linearGradient id="pwa-maskable-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#262930"/>
+      <stop offset="50%" stop-color="#1e2026"/>
+      <stop offset="100%" stop-color="#141518"/>
     </linearGradient>
   </defs>
-  <!-- Full bleed background for safe-zone masking -->
-  <rect width="512" height="512" fill="url(#pwa-maskable-grad)"/>
-  
-  <!-- Safe Zone content within inner 80% circle (radius ~204 centered at 256,256) -->
-  <g transform="translate(0, 0)">
-    <path d="M196 212L152 256L196 300" stroke="#ffffff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-    <path d="M316 212L360 256L316 300" stroke="#ffffff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-    <circle cx="256" cy="256" r="28" fill="#ffffff"/>
-    <path d="M340 160L346 172L358 178L346 184L340 196L334 184L322 178L334 172Z" fill="#e0e7ff" opacity="0.9"/>
+
+  <!-- Full Bleed Background for Android/PWA Masking -->
+  <rect width="512" height="512" fill="url(#pwa-maskable-bg)"/>
+
+  <!-- Blueprint Grid Across Full Canvas -->
+  <g stroke="#353b47" stroke-width="2" opacity="0.85">
+    <line x1="60" y1="0" x2="60" y2="512"/>
+    <line x1="109" y1="0" x2="109" y2="512"/>
+    <line x1="158" y1="0" x2="158" y2="512"/>
+    <line x1="207" y1="0" x2="207" y2="512"/>
+    <line x1="256" y1="0" x2="256" y2="512"/>
+    <line x1="305" y1="0" x2="305" y2="512"/>
+    <line x1="354" y1="0" x2="354" y2="512"/>
+    <line x1="403" y1="0" x2="403" y2="512"/>
+    <line x1="452" y1="0" x2="452" y2="512"/>
+
+    <line x1="0" y1="60" x2="512" y2="60"/>
+    <line x1="0" y1="109" x2="512" y2="109"/>
+    <line x1="0" y1="158" x2="512" y2="158"/>
+    <line x1="0" y1="207" x2="512" y2="207"/>
+    <line x1="0" y1="256" x2="512" y2="256"/>
+    <line x1="0" y1="305" x2="512" y2="305"/>
+    <line x1="0" y1="354" x2="512" y2="354"/>
+    <line x1="0" y1="403" x2="512" y2="403"/>
+    <line x1="0" y1="452" x2="512" y2="452"/>
+  </g>
+
+  <!-- PWA Maskable Safe Zone Content (Scaled to 82% to guarantee 100% visibility on all circular/squircle mask cuts) -->
+  <g transform="translate(256, 256) scale(0.82) translate(-256, -256)">
+    <!-- White Dashed Blueprint Construction Lines -->
+    <g stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="8 6" opacity="0.95" fill="none">
+      <!-- Top-left Code Symbol: < / > -->
+      <polyline points="106,34 32,73 106,112"/>
+      <line x1="108" y1="34" x2="72" y2="112"/>
+      <polyline points="114,34 150,73 114,112"/>
+
+      <!-- Top-left horizontal line -->
+      <line x1="0" y1="128" x2="160" y2="128"/>
+
+      <!-- Ray from top pointing to center dot -->
+      <line x1="194" y1="18" x2="256" y2="228"/>
+
+      <!-- Top-right vertical dashed line -->
+      <line x1="300" y1="18" x2="300" y2="170"/>
+
+      <!-- Far right vertical line stepping down -->
+      <polyline points="430,18 430,256 512,256"/>
+
+      <!-- Bottom-left stepped lines -->
+      <polyline points="0,384 100,384 100,256 60,256"/>
+      <polyline points="0,412 100,412 100,512"/>
+      <line x1="194" y1="384" x2="194" y2="512"/>
+
+      <!-- Center bottom vertical line -->
+      <line x1="256" y1="384" x2="256" y2="512"/>
+
+      <!-- Bottom-right corner frames -->
+      <polyline points="390,512 390,392 512,392"/>
+      <polyline points="410,512 410,412 512,412"/>
+    </g>
+
+    <!-- DevDot "D • D" Typography / Core Symbol -->
+    <g fill="#ffffff">
+      <!-- Left 'D' -->
+      <path fill-rule="evenodd" d="M 100 174 H 164 C 204 174 230 196 230 256 C 230 316 204 338 164 338 H 100 V 174 Z M 134 204 V 308 H 160 C 184 308 196 294 196 256 C 196 218 184 204 160 204 H 134 Z"/>
+
+      <!-- Center Dot '•' -->
+      <circle cx="256" cy="256" r="19"/>
+
+      <!-- Right 'D' -->
+      <path fill-rule="evenodd" d="M 282 174 H 346 C 386 174 412 196 412 256 C 412 316 386 338 346 338 H 282 V 174 Z M 316 204 V 308 H 342 C 366 308 378 294 378 256 C 378 218 366 204 342 204 H 316 Z"/>
+    </g>
   </g>
 </svg>

@@ -1,20 +1,93 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
   <defs>
-    <linearGradient id="pwa-grad-192" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#6366f1"/>
-      <stop offset="100%" stop-color="#8b5cf6"/>
+    <!-- Background Gradient -->
+    <linearGradient id="pwa-bg-192" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#262930"/>
+      <stop offset="50%" stop-color="#1e2026"/>
+      <stop offset="100%" stop-color="#141518"/>
     </linearGradient>
-    <filter id="shadow-192" x="-10%" y="-10%" width="120%" height="120%">
-      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.3"/>
-    </filter>
+
+    <!-- Clip path to squircle -->
+    <clipPath id="pwa-squircle-clip-192">
+      <rect x="7" y="7" width="178" height="178" rx="40" ry="40"/>
+    </clipPath>
   </defs>
-  <rect width="192" height="192" rx="44" fill="#0f172a"/>
-  <rect x="20" y="20" width="152" height="152" rx="36" fill="url(#pwa-grad-192)" filter="url(#shadow-192)"/>
-  <!-- DevDot Central Emblem: Code Angle Brackets & Sparkle Dot -->
-  <path d="M68 76L48 96L68 116" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <path d="M124 76L144 96L124 116" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <circle cx="96" cy="96" r="12" fill="#ffffff"/>
-  <!-- Subtle MD3 geometric accent -->
-  <circle cx="136" cy="56" r="6" fill="#a78bfa" opacity="0.8"/>
-  <circle cx="56" cy="136" r="6" fill="#818cf8" opacity="0.8"/>
+
+  <!-- Base Squircle with Clip -->
+  <g clip-path="url(#pwa-squircle-clip-192)">
+    <!-- Dark Slate Background -->
+    <rect x="7" y="7" width="178" height="178" fill="url(#pwa-bg-192)"/>
+
+    <!-- Grid Lines (Blueprint Layout) -->
+    <g stroke="#353b47" stroke-width="1" opacity="0.85">
+      <!-- Vertical Grid Lines -->
+      <line x1="22" y1="0" x2="22" y2="192"/>
+      <line x1="41" y1="0" x2="41" y2="192"/>
+      <line x1="59" y1="0" x2="59" y2="192"/>
+      <line x1="78" y1="0" x2="78" y2="192"/>
+      <line x1="96" y1="0" x2="96" y2="192"/>
+      <line x1="114" y1="0" x2="114" y2="192"/>
+      <line x1="133" y1="0" x2="133" y2="192"/>
+      <line x1="151" y1="0" x2="151" y2="192"/>
+      <line x1="170" y1="0" x2="170" y2="192"/>
+
+      <!-- Horizontal Grid Lines -->
+      <line x1="0" y1="22" x2="192" y2="22"/>
+      <line x1="0" y1="41" x2="192" y2="41"/>
+      <line x1="0" y1="59" x2="192" y2="59"/>
+      <line x1="0" y1="78" x2="192" y2="78"/>
+      <line x1="0" y1="96" x2="192" y2="96"/>
+      <line x1="0" y1="114" x2="192" y2="114"/>
+      <line x1="0" y1="133" x2="192" y2="133"/>
+      <line x1="0" y1="151" x2="192" y2="151"/>
+      <line x1="0" y1="170" x2="192" y2="170"/>
+    </g>
+
+    <!-- White Dashed Blueprint Construction Lines -->
+    <g stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3.5 2.5" opacity="0.95" fill="none">
+      <!-- Top-left Code Symbol: < / > -->
+      <polyline points="40,13 12,27 40,42"/>
+      <line x1="40" y1="13" x2="27" y2="42"/>
+      <polyline points="43,13 56,27 43,42"/>
+
+      <!-- Top-left horizontal line -->
+      <line x1="0" y1="48" x2="60" y2="48"/>
+
+      <!-- Ray from top pointing to center dot -->
+      <line x1="73" y1="7" x2="96" y2="85"/>
+
+      <!-- Top-right vertical dashed line -->
+      <line x1="112" y1="7" x2="112" y2="64"/>
+
+      <!-- Far right vertical line stepping down -->
+      <polyline points="161,7 161,96 192,96"/>
+
+      <!-- Bottom-left stepped lines -->
+      <polyline points="0,144 38,144 38,96 22,96"/>
+      <polyline points="0,154 38,154 38,192"/>
+      <line x1="73" y1="144" x2="73" y2="192"/>
+
+      <!-- Center bottom vertical line -->
+      <line x1="96" y1="144" x2="96" y2="192"/>
+
+      <!-- Bottom-right corner frames -->
+      <polyline points="146,192 146,147 192,147"/>
+      <polyline points="154,192 154,154 192,154"/>
+    </g>
+
+    <!-- DevDot "D • D" Typography / Core Symbol -->
+    <g fill="#ffffff">
+      <!-- Left 'D' -->
+      <path fill-rule="evenodd" d="M 37.5 65.25 H 61.5 C 76.5 65.25 86.25 73.5 86.25 96 C 86.25 118.5 76.5 126.75 61.5 126.75 H 37.5 V 65.25 Z M 50.25 76.5 V 115.5 H 60 C 69 115.5 73.5 110.25 73.5 96 C 73.5 81.75 69 76.5 60 76.5 H 50.25 Z"/>
+
+      <!-- Center Dot '•' -->
+      <circle cx="96" cy="96" r="7.1"/>
+
+      <!-- Right 'D' -->
+      <path fill-rule="evenodd" d="M 105.75 65.25 H 129.75 C 144.75 65.25 154.5 73.5 154.5 96 C 154.5 118.5 144.75 126.75 129.75 126.75 H 105.75 V 65.25 Z M 118.5 76.5 V 115.5 H 128.25 C 137.25 115.5 141.75 110.25 141.75 96 C 141.75 81.75 137.25 76.5 128.25 76.5 H 118.5 Z"/>
+    </g>
+  </g>
+
+  <!-- Outer Border Stroke for Squircle -->
+  <rect x="7" y="7" width="178" height="178" rx="40" ry="40" fill="none" stroke="#3b414c" stroke-width="2"/>
 </svg>
