@@ -93,17 +93,22 @@ async function runPwaAndOfflineVerification() {
   assert(pwaStoreContent.includes('isOffline'), 'Tracks offline/online network status')
   assert(pwaStoreContent.includes('promptInstall'), 'Exposes promptInstall method')
   assert(pwaStoreContent.includes('showInstallBanner'), 'Computes showInstallBanner reactivity')
+  assert(pwaStoreContent.includes('dontAskAgainInstallPrompt'), 'Supports dontAskAgainInstallPrompt suppression')
 
   const usePwaPath = path.join(rootDir, 'src', 'composables', 'usePwa.ts')
   assert(fs.existsSync(usePwaPath), 'src/composables/usePwa.ts exists')
 
   const pwaBannerPath = path.join(rootDir, 'src', 'components', 'layout', 'PwaInstallBanner.vue')
   assert(fs.existsSync(pwaBannerPath), 'PwaInstallBanner.vue exists')
+  const pwaBannerContent = fs.readFileSync(pwaBannerPath, 'utf-8')
+  assert(pwaBannerContent.includes('handleDontAskAgain'), 'PwaInstallBanner includes Dont ask again option')
 
-  const appTopBarPath = path.join(rootDir, 'src', 'components', 'layout', 'AppTopBar.vue')
-  const appTopBarContent = fs.readFileSync(appTopBarPath, 'utf-8')
-  assert(appTopBarContent.includes('pwaStore.isInstallable'), 'AppTopBar includes PWA install button when installable')
-  assert(appTopBarContent.includes('pwaStore.needRefresh'), 'AppTopBar includes PWA update notification button')
+  const settingsDialogPath = path.join(rootDir, 'src', 'components', 'layout', 'SettingsDialog.vue')
+  assert(fs.existsSync(settingsDialogPath), 'SettingsDialog.vue exists')
+  const settingsDialogContent = fs.readFileSync(settingsDialogPath, 'utf-8')
+  assert(settingsDialogContent.includes('pwaStore.isInstallable'), 'SettingsDialog includes manual PWA install action')
+  assert(settingsDialogContent.includes('pwaStore.updateApp'), 'SettingsDialog includes manual offline cache update action')
+  assert(settingsDialogContent.includes('dontAskInstall'), 'SettingsDialog includes install banner suppression switch')
 
   const cmdPalettePath = path.join(rootDir, 'src', 'components', 'layout', 'CommandPalette.vue')
   const cmdPaletteContent = fs.readFileSync(cmdPalettePath, 'utf-8')

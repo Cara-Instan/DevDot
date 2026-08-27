@@ -110,11 +110,11 @@ Dokumen ini adalah **panduan eksekusi bertahap (Handover & Task Division)** untu
 ## ⚡ FASE 4: Compact Editor-First Tool Workspaces & Toolbars
 **Tujuan:** Memaksimalkan area editor code (>90% viewport) dan merombak toolbar di seluruh modul menjadi 1-baris ultra-compact.
 
-- [ ] **4.1 Hapus Banner Besar Header Tool di `src/App.vue`**
+- [x] **4.1 Hapus Banner Besar Header Tool di `src/App.vue`**
   - Hapus elemen `.tool-view-header` yang memakan >120px ruang vertikal.
   - Ganti dengan header inline minimalis atau integrasikan langsung ke dalam toolbar modul.
 
-- [ ] **4.2 Standardisasi Toolbar Compact 1-Baris pada Modul Utama**
+- [x] **4.2 Standardisasi Toolbar Compact 1-Baris pada Modul Utama**
   - **JSON Formatter (`JsonFormatterView.vue`)**:
     - Toolbar 1-baris tipis (`height: ~36px`): Segmented pills Indentation (2 sp / 4 sp / Tab), Minify toggle, Sort keys, Auto-repair switch, Load Sample, Clear, dan execution badge.
   - **JSON Schema & Types (`JsonSchemaView.vue`)**:
@@ -124,7 +124,7 @@ Dokumen ini adalah **panduan eksekusi bertahap (Handover & Task Division)** untu
   - **Crypto & Converters (`EncoderDecoderView.vue`, `HashGeneratorView.vue`, `JwtDebuggerView.vue`, `CurlConverterView.vue`, `MultiTranspilerView.vue`, `PiiRedactorView.vue`)**:
     - Pastikan seluruh toolbar compact, padding tipis, dan tidak ada elemen bertumpuk vertikal.
 
-- [ ] **4.3 Optimasi Viewport SplitEditor (`src/components/editor/SplitEditor.vue`)**
+- [x] **4.3 Optimasi Viewport SplitEditor (`src/components/editor/SplitEditor.vue`)**
   - Pastikan tinggi editor mengisi seluruh ruang layar yang tersedia (`calc(100vh - header_height - toolbar_height)`).
 
 - **Kriteria Selesai (DoD 4):**
@@ -136,12 +136,12 @@ Dokumen ini adalah **panduan eksekusi bertahap (Handover & Task Division)** untu
 ## 🛡️ FASE 5: PWA Suppression & Final Quality Verification
 **Tujuan:** Menghentikan popup install yang mengganggu, memastikan integrasi "Don't ask again", dan verifikasi menyeluruh.
 
-- [ ] **5.1 Integrasi PWA Suppression (`src/stores/pwa.ts` & `src/components/layout/PwaInstallBanner.vue`)**
+- [x] **5.1 Integrasi PWA Suppression (`src/stores/pwa.ts` & `src/components/layout/PwaInstallBanner.vue`)**
   - Sambungkan `pwaStore.showInstallBanner` dengan `settingsStore.dontAskAgainInstallPrompt`.
   - Jika pengguna memilih "Don't ask again" atau menonaktifkannya di Pengaturan, popup install tidak akan pernah muncul otomatis.
   - Tombol install manual tetap tersedia di dalam modal Pengaturan (`SettingsDialog.vue`).
 
-- [ ] **5.2 Verifikasi Suite & Build**
+- [x] **5.2 Verifikasi Suite & Build**
   - Jalankan `npm run build` untuk memastikan tidak ada error TypeScript / Vite.
   - Jalankan test scripts: `npm run test:json`, `npm run test:crypto`, `npm run test:snapshot`, dll.
   - Lakukan smoke test navigasi, dragging kartu, buka tutup settings, dan manipulasi editor.

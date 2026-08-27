@@ -1,3 +1,4 @@
+@import './fonts.css';
 @import './tokens.css';
 
 *,
@@ -15,7 +16,25 @@ body {
   overflow-x: hidden;
   background-color: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-family: var(--md-sys-typescale-font-family, 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif);
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Global full-width defaults for text areas and text fields */
+md-outlined-text-field,
+md-filled-text-field {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+md-outlined-text-field[type="textarea"],
+md-filled-text-field[type="textarea"] {
+  width: 100%;
+  display: block;
+}
+
+textarea {
+  box-sizing: border-box;
+  font-family: inherit;
 }
 

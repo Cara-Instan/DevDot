@@ -17,6 +17,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: [
         'favicon.svg',
+        'favicon.png',
+        'logo.png',
         'robots.txt',
         'pwa-192x192.svg',
         'pwa-512x512.svg',

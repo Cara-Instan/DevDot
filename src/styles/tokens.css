@@ -53,7 +53,9 @@
   --md-sys-color-scrim: #000000;
 
   /* Typography */
-  --md-sys-typescale-font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --md-ref-typeface-brand: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --md-ref-typeface-plain: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  --md-sys-typescale-font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
   --md-sys-typescale-font-family-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', Consolas, Monaco, monospace;
   --md-sys-shape-corner-none: 0px;
   --md-sys-shape-corner-extra-small: 4px;
