@@ -2,19 +2,12 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import {
   ArrowRightLeft,
-  Copy,
-  Check,
-  Trash2,
+  RotateCcw,
   Sparkles,
-  AlertCircle,
-  Clock,
-  Layers
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-vue-next'
-import {
-  M3Button,
-  M3Checkbox
-} from '@/components'
-import { CodeEditor } from '@/components/editor'
+import { SplitEditor } from '@/components'
 import { useSnapshotStore } from '@/stores'
 import { transpileData } from '../services/transpiler-service'
 import type { DataFormat, TranspileOptions, TranspileResult } from '../types'
@@ -26,7 +19,6 @@ const sourceFormat = ref<DataFormat>('json')
 const targetFormat = ref<DataFormat>('yaml')
 const inputText = ref('')
 const outputText = ref('')
-const isCopied = ref(false)
 const errorMsg = ref<string | null>(null)
 const warnings = ref<string[]>([])
 const executionTimeMs = ref<number | null>(null)
@@ -43,11 +35,11 @@ const csvQuotes = ref(false)
 const flattenNested = ref(true)
 
 // Available formats
-const FORMATS: { id: DataFormat; label: string; badge: string }[] = [
-  { id: 'json', label: 'JSON', badge: '.json' },
-  { id: 'yaml', label: 'YAML', badge: '.yaml' },
-  { id: 'toml', label: 'TOML', badge: '.toml' },
-  { id: 'csv', label: 'CSV', badge: '.csv' }
+const FORMATS: { id: DataFormat; label: string; badge: string; dotClass: string }[] = [
+  { id: 'json', label: 'JSON', badge: '.json', dotClass: 'json-dot' },
+  { id: 'yaml', label: 'YAML', badge: '.yaml', dotClass: 'yaml-dot' },
+  { id: 'toml', label: 'TOML', badge: '.toml', dotClass: 'toml-dot' },
+  { id: 'csv', label: 'CSV', badge: '.csv', dotClass: 'csv-dot' }
 ]
 
 // Preset Samples
@@ -189,20 +181,6 @@ function loadSample(key: string) {
   }
 }
 
-// Copy output to clipboard
-async function copyOutput() {
-  if (!outputText.value) return
-  try {
-    await navigator.clipboard.writeText(outputText.value)
-    isCopied.value = true
-    setTimeout(() => {
-      isCopied.value = false
-    }, 2000)
-  } catch {
-    // fallback
-  }
-}
-
 function clearAll() {
   inputText.value = ''
   outputText.value = ''
@@ -212,7 +190,9 @@ function clearAll() {
   itemCount.value = null
 }
 
-// Debounced reactive update
+let isHydrating = false
+
+// Debounced reactive update & snapshot sync
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 watch(
   [
@@ -229,6 +209,7 @@ watch(
     flattenNested
   ],
   () => {
+    if (isHydrating) return
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
       handleTranspile()
@@ -247,11 +228,33 @@ watch(
         csvQuotes: csvQuotes.value,
         flattenNested: flattenNested.value
       })
-    }, 200)
+    }, 150)
   }
 )
 
-// Hydrate from snapshot on mount
+// Hydrate from snapshot on mount and external update
+watch(
+  () => snapshotStore.toolStates['multi-transpiler'],
+  (newState) => {
+    if (newState && !isHydrating) {
+      isHydrating = true
+      if (newState.sourceFormat) sourceFormat.value = newState.sourceFormat
+      if (newState.targetFormat) targetFormat.value = newState.targetFormat
+      if (newState.inputText !== undefined) inputText.value = newState.inputText
+      if (newState.jsonIndent !== undefined) jsonIndent.value = newState.jsonIndent
+      if (newState.yamlIndent !== undefined) yamlIndent.value = newState.yamlIndent
+      if (newState.yamlSortKeys !== undefined) yamlSortKeys.value = newState.yamlSortKeys
+      if (newState.csvDelimiter !== undefined) csvDelimiter.value = newState.csvDelimiter
+      if (newState.csvHeader !== undefined) csvHeader.value = newState.csvHeader
+      if (newState.csvDynamicTyping !== undefined) csvDynamicTyping.value = newState.csvDynamicTyping
+      if (newState.csvQuotes !== undefined) csvQuotes.value = newState.csvQuotes
+      if (newState.flattenNested !== undefined) flattenNested.value = newState.flattenNested
+      isHydrating = false
+    }
+  },
+  { deep: true }
+)
+
 onMounted(() => {
   const saved = snapshotStore.getToolState('multi-transpiler')
   if (saved) {
@@ -267,220 +270,126 @@ onMounted(() => {
     if (saved.csvQuotes !== undefined) csvQuotes.value = saved.csvQuotes
     if (saved.flattenNested !== undefined) flattenNested.value = saved.flattenNested
   } else {
-    // Default initial sample
     loadSample('users')
   }
+  handleTranspile()
 })
 </script>
 
 <template>
   <div class="transpiler-view">
-    <!-- Top Action & Format Selection Bar -->
-    <section class="format-selection-card">
-      <div class="format-selector-row">
+    <!-- Compact 1-Line Desktop Toolbar -->
+    <div class="transpiler-compact-toolbar">
+      <div class="toolbar-left">
         <!-- Source Format Select -->
-        <div class="format-group">
-          <label class="group-label">Source Format</label>
-          <div class="format-chips">
-            <button
-              v-for="fmt in FORMATS"
-              :key="'src-' + fmt.id"
-              class="format-chip"
-              :class="{ active: sourceFormat === fmt.id }"
-              @click="sourceFormat = fmt.id"
-            >
-              <span>{{ fmt.label }}</span>
-              <span class="chip-badge">{{ fmt.badge }}</span>
-            </button>
-          </div>
+        <div class="format-chips">
+          <button
+            v-for="fmt in FORMATS"
+            :key="'src-' + fmt.id"
+            type="button"
+            class="format-chip"
+            :class="{ active: sourceFormat === fmt.id }"
+            @click="sourceFormat = fmt.id"
+          >
+            <span class="lang-dot" :class="fmt.dotClass"></span>
+            <span>{{ fmt.label }}</span>
+          </button>
         </div>
 
         <!-- Swap Button -->
-        <div class="swap-action-container">
-          <button
-            class="swap-btn"
-            title="Swap Source and Target formats & content"
-            @click="handleSwapFormats"
-          >
-            <ArrowRightLeft :size="18" />
-          </button>
-        </div>
+        <button
+          type="button"
+          class="compact-swap-btn"
+          title="Swap Source and Target formats & content"
+          @click="handleSwapFormats"
+        >
+          <ArrowRightLeft :size="13" />
+        </button>
 
         <!-- Target Format Select -->
-        <div class="format-group">
-          <label class="group-label">Target Format</label>
-          <div class="format-chips">
-            <button
-              v-for="fmt in FORMATS"
-              :key="'tgt-' + fmt.id"
-              class="format-chip"
-              :class="{ active: targetFormat === fmt.id }"
-              @click="targetFormat = fmt.id"
-            >
-              <span>{{ fmt.label }}</span>
-              <span class="chip-badge">{{ fmt.badge }}</span>
-            </button>
-          </div>
+        <div class="format-chips">
+          <button
+            v-for="fmt in FORMATS"
+            :key="'tgt-' + fmt.id"
+            type="button"
+            class="format-chip"
+            :class="{ active: targetFormat === fmt.id }"
+            @click="targetFormat = fmt.id"
+          >
+            <span class="lang-dot" :class="fmt.dotClass"></span>
+            <span>{{ fmt.label }}</span>
+          </button>
+        </div>
+
+        <!-- Contextual Compact Options -->
+        <div class="context-options-inline">
+          <template v-if="targetFormat === 'json'">
+            <select v-model="jsonIndent" class="compact-select">
+              <option :value="2">2 Spaces</option>
+              <option :value="4">4 Spaces</option>
+              <option value="tab">Tab</option>
+              <option :value="0">Minify</option>
+            </select>
+          </template>
+
+          <template v-else-if="targetFormat === 'yaml'">
+            <label class="compact-check"><input v-model="yamlSortKeys" type="checkbox" /> Sort Keys</label>
+          </template>
+
+          <template v-else-if="sourceFormat === 'csv' || targetFormat === 'csv'">
+            <select v-model="csvDelimiter" class="compact-select">
+              <option value=",">Comma (,)</option>
+              <option value=";">Semicolon (;)</option>
+              <option value="&#9;">Tab (\t)</option>
+              <option value="|">Pipe (|)</option>
+            </select>
+            <label class="compact-check"><input v-model="csvHeader" type="checkbox" /> Header</label>
+          </template>
         </div>
       </div>
 
-      <!-- Presets & Quick Actions Row -->
-      <div class="presets-row">
-        <div class="presets-group">
-          <span class="presets-label">Presets:</span>
-          <button
-            v-for="(sample, key) in SAMPLES"
-            :key="key"
-            class="preset-btn"
-            @click="loadSample(String(key))"
-          >
-            <Sparkles :size="13" />
-            <span>{{ sample.title }}</span>
-          </button>
-        </div>
+      <!-- Presets & Quick Actions -->
+      <div class="toolbar-right">
+        <span class="presets-label">Samples:</span>
+        <button
+          v-for="(sample, key) in SAMPLES"
+          :key="key"
+          type="button"
+          class="preset-btn"
+          @click="loadSample(String(key))"
+        >
+          <span>{{ sample.title }}</span>
+        </button>
 
-        <div class="header-stats">
-          <div v-if="executionTimeMs !== null" class="stat-badge">
-            <Clock :size="13" />
-            <span>{{ executionTimeMs }} ms</span>
-          </div>
-          <div v-if="itemCount !== null" class="stat-badge">
-            <Layers :size="13" />
-            <span>{{ itemCount }} {{ itemCount === 1 ? 'record' : 'records' }}</span>
-          </div>
-          <M3Button variant="text" size="small" @click="clearAll">
-            <template #icon>
-              <Trash2 :size="14" />
-            </template>
-            Clear
-          </M3Button>
-        </div>
-      </div>
-    </section>
+        <span v-if="executionTimeMs !== null" class="exec-badge">
+          {{ executionTimeMs }} ms
+        </span>
 
-    <!-- Format Options Toolbar -->
-    <section class="options-bar">
-      <!-- Target JSON Options -->
-      <div v-if="targetFormat === 'json'" class="opt-segment">
-        <span class="opt-label">JSON Indent:</span>
-        <div class="sub-chips">
-          <button
-            class="sub-chip"
-            :class="{ active: jsonIndent === 2 }"
-            @click="jsonIndent = 2"
-          >
-            2 Spaces
-          </button>
-          <button
-            class="sub-chip"
-            :class="{ active: jsonIndent === 4 }"
-            @click="jsonIndent = 4"
-          >
-            4 Spaces
-          </button>
-          <button
-            class="sub-chip"
-            :class="{ active: jsonIndent === 'tab' }"
-            @click="jsonIndent = 'tab'"
-          >
-            Tab
-          </button>
-          <button
-            class="sub-chip"
-            :class="{ active: jsonIndent === 0 }"
-            @click="jsonIndent = 0"
-          >
-            Compact (Minify)
-          </button>
-        </div>
-      </div>
+        <button
+          type="button"
+          class="compact-action-btn primary-btn"
+          :disabled="!inputText.trim()"
+          @click="handleTranspile"
+        >
+          <Sparkles :size="14" />
+          <span>Convert</span>
+        </button>
 
-      <!-- Target YAML Options -->
-      <div v-if="targetFormat === 'yaml'" class="opt-segment">
-        <span class="opt-label">YAML Indent:</span>
-        <div class="sub-chips">
-          <button
-            class="sub-chip"
-            :class="{ active: yamlIndent === 2 }"
-            @click="yamlIndent = 2"
-          >
-            2 Spaces
-          </button>
-          <button
-            class="sub-chip"
-            :class="{ active: yamlIndent === 4 }"
-            @click="yamlIndent = 4"
-          >
-            4 Spaces
-          </button>
-        </div>
-        <M3Checkbox
-          v-model="yamlSortKeys"
-          label="Sort Keys"
-        />
-      </div>
-
-      <!-- CSV Options (for source or target CSV) -->
-      <div v-if="sourceFormat === 'csv' || targetFormat === 'csv'" class="opt-segment">
-        <span class="opt-label">CSV Delimiter:</span>
-        <div class="sub-chips">
-          <button
-            class="sub-chip"
-            :class="{ active: csvDelimiter === ',' }"
-            @click="csvDelimiter = ','"
-          >
-            Comma (,)
-          </button>
-          <button
-            class="sub-chip"
-            :class="{ active: csvDelimiter === ';' }"
-            @click="csvDelimiter = ';'"
-          >
-            Semicolon (;)
-          </button>
-          <button
-            class="sub-chip"
-            :class="{ active: csvDelimiter === '\t' }"
-            @click="csvDelimiter = '\t'"
-          >
-            Tab (\t)
-          </button>
-          <button
-            class="sub-chip"
-            :class="{ active: csvDelimiter === '|' }"
-            @click="csvDelimiter = '|'"
-          >
-            Pipe (|)
-          </button>
-        </div>
-
-        <M3Checkbox
-          v-model="csvHeader"
-          label="Header Row"
-        />
-        <M3Checkbox
-          v-if="targetFormat === 'csv'"
-          v-model="flattenNested"
-          label="Flatten Nested Keys"
-        />
-        <M3Checkbox
-          v-if="targetFormat === 'csv'"
-          v-model="csvQuotes"
-          label="Quote All Fields"
-        />
-      </div>
-    </section>
-
-    <!-- Error / Warning Messages -->
-    <div v-if="errorMsg" class="alert-banner error-banner">
-      <AlertCircle :size="18" />
-      <div class="alert-content">
-        <strong>Transpilation Failed:</strong> {{ errorMsg }}
+        <button
+          type="button"
+          class="compact-action-btn text-btn"
+          title="Clear all"
+          @click="clearAll"
+        >
+          <RotateCcw :size="13" />
+          <span>Clear</span>
+        </button>
       </div>
     </div>
 
+    <!-- Warnings Banner -->
     <div v-if="warnings.length > 0" class="alert-banner warning-banner">
-      <AlertCircle :size="18" />
+      <AlertCircle :size="16" />
       <div class="alert-content">
         <div v-for="(warn, i) in warnings" :key="i">
           {{ warn }}
@@ -488,63 +397,49 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Dual Split Editor Grid -->
-    <div class="editors-grid">
-      <!-- Input Panel -->
-      <div class="editor-pane input-pane">
-        <div class="pane-header">
-          <div class="pane-title">
-            <span class="dot-indicator input-dot"></span>
-            <strong>Source ({{ sourceFormat.toUpperCase() }})</strong>
-          </div>
-          <div class="pane-actions">
-            <span class="format-badge-pill">{{ sourceFormat.toUpperCase() }}</span>
-          </div>
-        </div>
+    <!-- Split Editor Area -->
+    <div class="editor-area">
+      <SplitEditor
+        v-model:input="inputText"
+        v-model:output="outputText"
+        :input-language="sourceEditorLang"
+        :output-language="targetEditorLang"
+        :input-title="`Source (${sourceFormat.toUpperCase()})`"
+        :output-title="`Converted (${targetFormat.toUpperCase()})`"
+        :is-executing="false"
+        :error="errorMsg"
+        :execution-time-ms="executionTimeMs"
+        :show-execute-button="false"
+        height="100%"
+        @execute="handleTranspile"
+      />
+    </div>
 
-        <div class="pane-body">
-          <CodeEditor
-            v-model="inputText"
-            :language="sourceEditorLang"
-            placeholder="Paste or type your input data here..."
-            height="100%"
-          />
-        </div>
+    <!-- Stats & Information Bar -->
+    <div v-if="outputText && !errorMsg" class="stats-footer">
+      <div class="stat-pill">
+        <span class="stat-label">Source:</span>
+        <span class="stat-val uppercase">{{ sourceFormat }}</span>
       </div>
 
-      <!-- Output Panel -->
-      <div class="editor-pane output-pane">
-        <div class="pane-header">
-          <div class="pane-title">
-            <span class="dot-indicator output-dot"></span>
-            <strong>Target ({{ targetFormat.toUpperCase() }})</strong>
-          </div>
-          <div class="pane-actions">
-            <span class="format-badge-pill highlight">{{ targetFormat.toUpperCase() }}</span>
-            <M3Button
-              variant="tonal"
-              size="small"
-              :disabled="!outputText"
-              @click="copyOutput"
-            >
-              <template #icon>
-                <Check v-if="isCopied" :size="14" class="copy-success-icon" />
-                <Copy v-else :size="14" />
-              </template>
-              {{ isCopied ? 'Copied!' : 'Copy Result' }}
-            </M3Button>
-          </div>
-        </div>
+      <div class="stat-pill">
+        <span class="stat-label">Target:</span>
+        <span class="stat-val uppercase">{{ targetFormat }}</span>
+      </div>
 
-        <div class="pane-body">
-          <CodeEditor
-            :model-value="outputText"
-            :language="targetEditorLang"
-            :read-only="true"
-            placeholder="Converted output will appear here in real-time..."
-            height="100%"
-          />
-        </div>
+      <div v-if="itemCount !== null" class="stat-pill">
+        <span class="stat-label">Items:</span>
+        <span class="stat-val">{{ itemCount }}</span>
+      </div>
+
+      <div class="stat-pill">
+        <span class="stat-label">Output Size:</span>
+        <span class="stat-val">{{ outputText.length }} chars</span>
+      </div>
+
+      <div class="stat-pill success-tag">
+        <CheckCircle2 :size="13" />
+        <span>Transpiled Cleanly</span>
       </div>
     </div>
   </div>
@@ -554,230 +449,204 @@ onMounted(() => {
 .transpiler-view {
   display: flex;
   flex-direction: column;
-  gap: var(--md-sys-spacing-md, 16px);
+  gap: 0.375rem;
   width: 100%;
-  height: calc(100vh - 210px);
-  min-height: 540px;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
-/* Format Selection Card */
-.format-selection-card {
-  background: var(--md-sys-color-surface-container-low, #1e1f22);
-  border: 1px solid var(--md-sys-color-outline-variant, #444746);
-  border-radius: var(--md-sys-shape-corner-medium, 12px);
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.format-selector-row {
+/* Compact Toolbar */
+.transpiler-compact-toolbar {
+  background: var(--md-sys-color-surface-container);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  padding: 0.25rem 0.625rem;
   display: flex;
   align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 36px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
 }
 
-.format-group {
+.toolbar-left,
+.toolbar-right {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-  min-width: 260px;
-}
-
-.group-label {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--md-sys-color-on-surface-variant, #c4c7c5);
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+  flex-shrink: 0;
 }
 
 .format-chips {
   display: flex;
-  gap: 6px;
-  background: var(--md-sys-color-surface-container, #141518);
-  padding: 4px;
-  border-radius: 10px;
-  border: 1px solid var(--md-sys-color-outline-variant, #333538);
+  gap: 0.2rem;
+  align-items: center;
 }
 
 .format-chip {
-  flex: 1;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 7px 10px;
-  font-size: 13px;
-  font-weight: 600;
-  border: none;
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant, #c4c7c5);
-  border-radius: 7px;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  border-radius: var(--md-sys-shape-corner-full);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .format-chip:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--md-sys-color-on-surface, #e3e3e3);
+  background-color: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
 }
 
 .format-chip.active {
-  background: var(--md-sys-color-primary, #a8c7fa);
-  color: var(--md-sys-color-on-primary, #062e6f);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-primary);
+  font-weight: 600;
 }
 
-.chip-badge {
-  font-size: 10px;
-  opacity: 0.75;
-  font-family: monospace;
+.lang-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-.swap-action-container {
-  display: flex;
-  align-items: flex-end;
-  padding-bottom: 2px;
-}
+.json-dot { background-color: #f59e0b; }
+.yaml-dot { background-color: #ef4444; }
+.toml-dot { background-color: #a855f7; }
+.csv-dot  { background-color: #10b981; }
 
-.swap-btn {
+.compact-swap-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--md-sys-color-surface-container-high, #2b2d31);
-  border: 1px solid var(--md-sys-color-outline-variant, #444746);
-  color: var(--md-sys-color-primary, #a8c7fa);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--md-sys-shape-corner-full);
+  background-color: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-primary);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
-.swap-btn:hover {
-  background: var(--md-sys-color-primary-container, #0842a0);
-  color: var(--md-sys-color-on-primary-container, #d3e3fd);
-  transform: rotate(180deg);
+.compact-swap-btn:hover {
+  background-color: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
 }
 
-/* Presets & Stats Row */
-.presets-row {
+.context-options-inline {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  gap: 0.35rem;
+  padding-left: 0.35rem;
+  border-left: 1px solid var(--md-sys-color-outline-variant);
+  font-size: 0.6875rem;
+  color: var(--md-sys-color-on-surface-variant);
 }
 
-.presets-group {
-  display: flex;
+.compact-select {
+  height: 24px;
+  padding: 0 0.35rem;
+  font-size: 0.6875rem;
+  background-color: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  color: var(--md-sys-color-on-surface);
+  outline: none;
+}
+
+.compact-check {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 0.25rem;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .presets-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--md-sys-color-on-surface-variant, #8e918f);
+  font-size: 0.6875rem;
+  color: var(--md-sys-color-on-surface-variant);
+  font-weight: 500;
 }
 
 .preset-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 10px;
-  font-size: 12px;
-  border-radius: 6px;
-  border: 1px solid var(--md-sys-color-outline-variant, #444746);
-  background: var(--md-sys-color-surface-container, #141518);
-  color: var(--md-sys-color-on-surface, #e3e3e3);
+  padding: 0.2rem 0.5rem;
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-full);
+  font-size: 0.6875rem;
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .preset-btn:hover {
-  border-color: var(--md-sys-color-primary, #a8c7fa);
-  color: var(--md-sys-color-primary, #a8c7fa);
-  background: rgba(168, 199, 250, 0.08);
+  background-color: var(--md-sys-color-surface-container-highest);
+  border-color: var(--md-sys-color-primary);
 }
 
-.header-stats {
-  display: flex;
+.exec-badge {
+  font-size: 0.6875rem;
+  font-family: var(--md-sys-typescale-code-font, monospace);
+  color: var(--md-sys-color-on-surface-variant);
+  background-color: var(--md-sys-color-surface-container-high);
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--md-sys-shape-corner-small);
+}
+
+.compact-action-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-}
-
-.stat-badge {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  font-family: monospace;
-  padding: 3px 8px;
-  border-radius: 6px;
-  background: var(--md-sys-color-surface-container-high, #2b2d31);
-  color: var(--md-sys-color-on-surface-variant, #c4c7c5);
-}
-
-/* Options Bar */
-.options-bar {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 8px 14px;
-  background: var(--md-sys-color-surface-container-lowest, #0e0f12);
-  border: 1px solid var(--md-sys-color-outline-variant, #333538);
-  border-radius: 8px;
-}
-
-.opt-segment {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.opt-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--md-sys-color-on-surface-variant, #c4c7c5);
-}
-
-.sub-chips {
-  display: flex;
-  gap: 4px;
-  background: var(--md-sys-color-surface-container, #1e1f22);
-  padding: 2px;
-  border-radius: 6px;
-}
-
-.sub-chip {
-  font-size: 11px;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.75rem;
   font-weight: 500;
-  padding: 4px 8px;
-  border-radius: 4px;
-  border: none;
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant, #c4c7c5);
+  border-radius: var(--md-sys-shape-corner-full);
   cursor: pointer;
-  transition: all 0.12s ease;
+  border: none;
+  transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
-.sub-chip:hover {
-  color: var(--md-sys-color-on-surface, #ffffff);
+.primary-btn {
+  background-color: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
 }
 
-.sub-chip.active {
-  background: var(--md-sys-color-primary-container, #0842a0);
-  color: var(--md-sys-color-on-primary-container, #d3e3fd);
-  font-weight: 600;
+.primary-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  box-shadow: var(--md-sys-elevation-level1);
+}
+
+.primary-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.text-btn {
+  background-color: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.text-btn:hover:not(:disabled) {
+  background-color: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
 }
 
 /* Alert Banners */
@@ -785,15 +654,9 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  font-size: 13px;
-}
-
-.error-banner {
-  background: rgba(242, 184, 181, 0.12);
-  border: 1px solid var(--md-sys-color-error, #f2b8b5);
-  color: var(--md-sys-color-error, #f2b8b5);
+  padding: 8px 12px;
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: 0.75rem;
 }
 
 .warning-banner {
@@ -802,92 +665,52 @@ onMounted(() => {
   color: #f7ce69;
 }
 
-/* Dual Editor Grid */
-.editors-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: var(--md-sys-spacing-md, 16px);
+/* Split Editor Area */
+.editor-area {
   flex: 1;
-  min-height: 380px;
+  min-height: 0;
+  height: 100%;
   width: 100%;
 }
 
-.editor-pane {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--md-sys-color-outline-variant, #444746);
-  border-radius: var(--md-sys-shape-corner-medium, 12px);
-  background: var(--md-sys-color-surface-container-lowest, #0e0f12);
-  overflow: hidden;
-  min-width: 0;
-}
-
-
-.pane-header {
+/* Stats Footer */
+.stats-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  background: var(--md-sys-color-surface-container-low, #1e1f22);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant, #333538);
+  gap: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  background-color: var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-small);
+  font-size: 0.6875rem;
+  color: var(--md-sys-color-on-surface-variant);
+  flex-wrap: wrap;
 }
 
-.pane-title {
-  display: flex;
+.stat-pill {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--md-sys-color-on-surface, #e3e3e3);
+  gap: 0.3rem;
 }
 
-.dot-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+.stat-label {
+  font-weight: 500;
+  opacity: 0.75;
 }
 
-.input-dot {
-  background: #a8c7fa;
+.stat-val {
+  font-family: var(--md-sys-typescale-code-font, monospace);
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
 }
 
-.output-dot {
-  background: #6dd58c;
+.stat-val.uppercase {
+  text-transform: uppercase;
 }
 
-.pane-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.format-badge-pill {
-  font-size: 11px;
-  font-weight: 700;
-  font-family: monospace;
-  padding: 2px 7px;
-  border-radius: 4px;
-  background: var(--md-sys-color-surface-container-high, #2b2d31);
-  color: var(--md-sys-color-on-surface-variant, #c4c7c5);
-}
-
-.format-badge-pill.highlight {
-  background: var(--md-sys-color-primary-container, #0842a0);
-  color: var(--md-sys-color-on-primary-container, #d3e3fd);
-}
-
-.copy-success-icon {
-  color: #6dd58c;
-}
-
-.pane-body {
-  flex: 1;
-  height: calc(100% - 44px);
-  position: relative;
-}
-
-@media (max-width: 860px) {
-  .editors-grid {
-    grid-template-columns: 1fr;
-  }
+.success-tag {
+  color: var(--md-sys-color-primary, #6dd58c);
+  font-weight: 500;
+  margin-left: auto;
 }
 </style>
