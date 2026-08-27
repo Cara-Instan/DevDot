@@ -89,12 +89,12 @@ Dokumen ini adalah **panduan eksekusi bertahap (Handover & Task Division)** untu
 ## 🧩 FASE 3: Overview Page Streamlining & Drag-and-Drop Reordering
 **Tujuan:** Menjadikan halaman Overview bersih, informatif, bebas bloat, serta mendukung kustomisasi urutan kartu tool dengan Drag-and-Drop.
 
-- [ ] **3.1 Hapus Bloat & Rampingkan Header Overview (`src/modules/overview/OverviewView.vue`)**
+- [x] **3.1 Hapus Bloat & Rampingkan Header Overview (`src/modules/overview/OverviewView.vue`)**
   - Ganti hero section besar dan kartu diagnostik berat dengan **Intro Banner Compact** (1 baris judul + deskripsi singkat + pill 100% offline).
   - Hapus section "Recently Used".
   - Hapus micro-scratchpads duplikat yang memenuhi halaman.
 
-- [ ] **3.2 Implementasi Drag-and-Drop Tool Ordering**
+- [x] **3.2 Implementasi Drag-and-Drop Tool Ordering**
   - Tampilkan katalog aplikasi dalam grid kartu compact yang bersih (ikon, judul, kategori, deskripsi singkat).
   - Implementasikan fitur **Drag-and-Drop Reordering** pada kartu aplikasi (menggunakan HTML5 Drag and Drop API atau pointer events ringan).
   - Simpan urutan kartu ke `settingsStore.toolOrder` di `localStorage`.
