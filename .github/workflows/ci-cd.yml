@@ -111,13 +111,16 @@ jobs:
         include:
           - platform: 'windows-x64'
             os: windows-latest
-            target: 'x86_64-pc-windows-msvc'
+            rust-target: 'x86_64-pc-windows-msvc'
+            tauri-args: ''
           - platform: 'macos-universal'
             os: macos-latest
-            target: 'universal-apple-darwin'
+            rust-target: 'x86_64-apple-darwin, aarch64-apple-darwin'
+            tauri-args: '--target universal-apple-darwin'
           - platform: 'linux-x64'
             os: ubuntu-22.04
-            target: 'x86_64-unknown-linux-gnu'
+            rust-target: 'x86_64-unknown-linux-gnu'
+            tauri-args: ''
 
     steps:
       - name: Checkout Code
@@ -132,7 +135,7 @@ jobs:
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.rust-target }}
 
       - name: Rust Dependency Cache
         uses: swatinem/rust-cache@v2
@@ -143,7 +146,7 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev libayatana-appindicator3-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev libxdo-dev
 
       - name: Install Frontend Dependencies
         run: npm ci
@@ -160,3 +163,4 @@ jobs:
           releaseBody: 'See changelog for details on this release.'
           releaseDraft: true
           prerelease: false
+          args: ${{ matrix.tauri-args }}

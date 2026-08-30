@@ -19,7 +19,8 @@
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "additionalBrowserArgs": "--enable-smooth-scrolling --enable-features=OverlayScrollbar,SmoothScrolling"
       }
     ],
     "security": {
