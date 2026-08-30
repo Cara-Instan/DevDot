@@ -31,6 +31,7 @@ interface Props {
   height?: string
   showExecuteButton?: boolean
   executeButtonLabel?: string
+  showSwapButton?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -49,7 +50,8 @@ const props = withDefaults(defineProps<Props>(), {
   initialSplit: 50,
   height: '100%',
   showExecuteButton: false,
-  executeButtonLabel: 'Transform'
+  executeButtonLabel: 'Transform',
+  showSwapButton: true
 })
 
 const emit = defineEmits<{
@@ -112,7 +114,7 @@ function handleSwap() {
 
         <!-- Swap input and output button -->
         <button
-          v-if="output && !inputReadonly"
+          v-if="showSwapButton && output && !inputReadonly"
           type="button"
           class="action-pill-btn"
           title="Swap Input & Output"
