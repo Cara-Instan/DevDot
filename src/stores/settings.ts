@@ -12,6 +12,8 @@ export interface SettingsState {
   clipboardAutoPurgeSeconds: number
   editorFontSize: number
   editorWordWrap: boolean
+  smoothScrolling: boolean
+  scrollMultiplier: number
 }
 
 export const SETTINGS_STORAGE_KEY = 'devdot_settings_v1'
@@ -25,7 +27,9 @@ export const DEFAULT_SETTINGS: SettingsState = {
   toolOrder: [...DEFAULT_TOOL_ORDER],
   clipboardAutoPurgeSeconds: 60,
   editorFontSize: 13,
-  editorWordWrap: true
+  editorWordWrap: true,
+  smoothScrolling: true,
+  scrollMultiplier: 1.25
 }
 
 function loadSettingsFromStorage(): SettingsState {
@@ -57,6 +61,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const clipboardAutoPurgeSeconds = ref<number>(initial.clipboardAutoPurgeSeconds)
   const editorFontSize = ref<number>(initial.editorFontSize)
   const editorWordWrap = ref<boolean>(initial.editorWordWrap)
+  const smoothScrolling = ref<boolean>(initial.smoothScrolling ?? true)
+  const scrollMultiplier = ref<number>(initial.scrollMultiplier ?? 1.25)
 
   function getSnapshot(): SettingsState {
     return {
@@ -66,7 +72,9 @@ export const useSettingsStore = defineStore('settings', () => {
       toolOrder: [...toolOrder.value],
       clipboardAutoPurgeSeconds: clipboardAutoPurgeSeconds.value,
       editorFontSize: editorFontSize.value,
-      editorWordWrap: editorWordWrap.value
+      editorWordWrap: editorWordWrap.value,
+      smoothScrolling: smoothScrolling.value,
+      scrollMultiplier: scrollMultiplier.value
     }
   }
 
@@ -87,7 +95,9 @@ export const useSettingsStore = defineStore('settings', () => {
       toolOrder,
       clipboardAutoPurgeSeconds,
       editorFontSize,
-      editorWordWrap
+      editorWordWrap,
+      smoothScrolling,
+      scrollMultiplier
     ],
     () => {
       saveSettings()
@@ -107,6 +117,8 @@ export const useSettingsStore = defineStore('settings', () => {
     }
     if (partial.editorFontSize !== undefined) editorFontSize.value = partial.editorFontSize
     if (partial.editorWordWrap !== undefined) editorWordWrap.value = partial.editorWordWrap
+    if (partial.smoothScrolling !== undefined) smoothScrolling.value = partial.smoothScrolling
+    if (partial.scrollMultiplier !== undefined) scrollMultiplier.value = partial.scrollMultiplier
     saveSettings()
   }
 
@@ -136,6 +148,8 @@ export const useSettingsStore = defineStore('settings', () => {
     clipboardAutoPurgeSeconds.value = DEFAULT_SETTINGS.clipboardAutoPurgeSeconds
     editorFontSize.value = DEFAULT_SETTINGS.editorFontSize
     editorWordWrap.value = DEFAULT_SETTINGS.editorWordWrap
+    smoothScrolling.value = DEFAULT_SETTINGS.smoothScrolling
+    scrollMultiplier.value = DEFAULT_SETTINGS.scrollMultiplier
 
     saveSettings()
   }
@@ -149,6 +163,8 @@ export const useSettingsStore = defineStore('settings', () => {
     clipboardAutoPurgeSeconds,
     editorFontSize,
     editorWordWrap,
+    smoothScrolling,
+    scrollMultiplier,
 
     // Actions
     getSnapshot,

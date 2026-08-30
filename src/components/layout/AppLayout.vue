@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import AppTopBar from './AppTopBar.vue'
 import AppNavigationDrawer from './AppNavigationDrawer.vue'
 import AppBottomNav from './AppBottomNav.vue'
@@ -10,8 +10,24 @@ import SnapshotDialog from './SnapshotDialog.vue'
 import SettingsDialog from './SettingsDialog.vue'
 import PwaInstallBanner from './PwaInstallBanner.vue'
 import { usePwaStore } from '@/stores/pwa'
+import { useNavigationStore } from '@/stores/navigation'
+import { useSmoothScroll } from '@/composables/useSmoothScroll'
 
 const pwaStore = usePwaStore()
+const navStore = useNavigationStore()
+const viewportRef = ref<HTMLElement | null>(null)
+
+const { scrollToTop, refresh } = useSmoothScroll({
+  wrapperRef: viewportRef
+})
+
+watch(
+  () => navStore.activeToolId,
+  () => {
+    scrollToTop(true)
+    refresh()
+  }
+)
 
 onMounted(() => {
   pwaStore.initPwa()
@@ -24,25 +40,25 @@ onMounted(() => {
     <AppTopBar />
 
     <div class="layout-body">
-      <!-- Main Application Canvas (100% Full-Width) -->
-      <main class="layout-viewport" role="main">
+      <!-- Main Application Canvas (100% Full-Width) with Smooth Momentum Scrolling -->
+      <main ref="viewportRef" class="layout-viewport" role="main">
         <slot />
       </main>
     </div>
 
     <!-- Slide-Over Navigation Flyout Drawer (On-Demand) -->
-    <AppNavigationDrawer />
+    <AppNavigationDrawer data-lenis-prevent />
 
     <!-- Responsive Bottom Bar (Mobile) -->
     <AppBottomNav />
 
     <!-- Modals & Overlays -->
-    <CommandPalette />
-    <PrivacyDialog />
-    <PanicDialog />
-    <SnapshotDialog />
-    <SettingsDialog />
-    <PwaInstallBanner />
+    <CommandPalette data-lenis-prevent />
+    <PrivacyDialog data-lenis-prevent />
+    <PanicDialog data-lenis-prevent />
+    <SnapshotDialog data-lenis-prevent />
+    <SettingsDialog data-lenis-prevent />
+    <PwaInstallBanner data-lenis-prevent />
   </div>
 </template>
 

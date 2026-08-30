@@ -290,6 +290,7 @@ onMounted(() => {
         :error="errorMsg"
         :execution-time-ms="executionTimeMs"
         :show-execute-button="false"
+        :show-swap-button="false"
         height="100%"
         @execute="handleConvert"
       />
