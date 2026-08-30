@@ -25,7 +25,8 @@ import {
   Check,
   Scale,
   Layers,
-  Shield
+  Shield,
+  ArrowUpDown
 } from 'lucide-vue-next'
 import appLogo from '@/assets/logo.png'
 
@@ -170,6 +171,20 @@ const editorWordWrap = computed({
   get: () => settingsStore.editorWordWrap,
   set: (val: boolean) => {
     settingsStore.updateSettings({ editorWordWrap: val })
+  }
+})
+
+const scrollSpeedOptions = [
+  { label: '1.0x (Standard)', value: 1.0 },
+  { label: '1.25x (Fast - Recommended)', value: 1.25 },
+  { label: '1.5x (Speed)', value: 1.5 },
+  { label: '2.0x (Ultra)', value: 2.0 }
+]
+
+const smoothScrolling = computed({
+  get: () => settingsStore.smoothScrolling,
+  set: (val: boolean) => {
+    settingsStore.updateSettings({ smoothScrolling: val })
   }
 })
 </script>
@@ -363,6 +378,44 @@ const editorWordWrap = computed({
               v-model="editorWordWrap"
               label=""
             />
+          </div>
+        </div>
+
+        <!-- Smooth Momentum Scrolling & Sensitivity -->
+        <div class="setting-card">
+          <div class="setting-card-header">
+            <div class="setting-title-with-icon">
+              <ArrowUpDown :size="16" class="setting-icon" />
+              <h4>Smooth Momentum Scrolling</h4>
+            </div>
+            <span class="setting-hint">Hardware-accelerated inertia & wheel scaling for desktop & Tauri</span>
+          </div>
+
+          <div class="setting-row">
+            <div class="setting-meta">
+              <h4>Enable Smooth Momentum</h4>
+              <p>Normalizes mouse wheel notches and adds effortless physics-based deceleration to the main canvas.</p>
+            </div>
+            <M3Switch
+              v-model="smoothScrolling"
+              label=""
+            />
+          </div>
+
+          <div v-if="smoothScrolling" class="font-size-row mt-3">
+            <span class="sub-label">Scroll Sensitivity:</span>
+            <div class="pills-group">
+              <button
+                v-for="opt in scrollSpeedOptions"
+                :key="opt.value"
+                type="button"
+                class="choice-pill"
+                :class="{ active: settingsStore.scrollMultiplier === opt.value }"
+                @click="settingsStore.updateSettings({ scrollMultiplier: opt.value })"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
