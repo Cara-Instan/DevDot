@@ -2,11 +2,15 @@ name: DevDot CI/CD Release Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
     tags:
       - 'v*'
+      - '[0-9]+.[0-9]+.[0-9]+*'
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
+  release:
+    types: [ published, prereleased ]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
