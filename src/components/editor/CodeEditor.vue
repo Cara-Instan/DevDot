@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import {
   EditorView,
   keymap,
@@ -22,7 +22,14 @@ import {
   foldKeymap
 } from '@codemirror/language'
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
-import { searchKeymap, highlightSelectionMatches } from '@codemirror/search'
+import {
+  search,
+  searchKeymap,
+  highlightSelectionMatches,
+  openSearchPanel,
+  closeSearchPanel,
+  searchPanelOpen
+} from '@codemirror/search'
 import { autocompletion, completionKeymap, closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete'
 import {
   Copy,
@@ -33,7 +40,8 @@ import {
   WrapText,
   FileCode,
   Lock,
-  Sparkles
+  Sparkles,
+  Search
 } from 'lucide-vue-next'
 import { useTheme } from '@/composables/useTheme'
 import { useSecurityStore } from '@/stores'
@@ -61,6 +69,7 @@ interface Props {
   showUpload?: boolean
   showDownload?: boolean
   showWrapToggle?: boolean
+  showFind?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -79,7 +88,8 @@ const props = withDefaults(defineProps<Props>(), {
   showCopy: true,
   showUpload: true,
   showDownload: true,
-  showWrapToggle: true
+  showWrapToggle: true,
+  showFind: true
 })
 
 const emit = defineEmits<{
@@ -151,10 +161,40 @@ function initEditor() {
       crosshairCursor(),
       highlightActiveLine(),
       highlightSelectionMatches(),
+      search({ top: true }),
       keymap.of([
+        {
+          key: 'Mod-f',
+          run: (view) => {
+            openSearchPanel(view)
+            nextTick(() => {
+              const searchInput = editorHost.value?.querySelector('.cm-textfield[name="search"]') as HTMLInputElement | null
+              if (searchInput) {
+                searchInput.focus()
+                searchInput.select()
+              }
+            })
+            return true
+          },
+          scope: 'editor search-panel',
+          preventDefault: true
+        },
+        {
+          key: 'Escape',
+          run: (view) => {
+            if (searchPanelOpen(view.state)) {
+              closeSearchPanel(view)
+              view.focus()
+              return true
+            }
+            return false
+          },
+          scope: 'editor search-panel',
+          preventDefault: true
+        },
         ...closeBracketsKeymap,
-        ...defaultKeymap,
         ...searchKeymap,
+        ...defaultKeymap,
         ...historyKeymap,
         ...foldKeymap,
         ...completionKeymap
@@ -162,10 +202,7 @@ function initEditor() {
       // Dynamic compartments
       themeCompartment.of(getEditorTheme(isDark.value)),
       languageCompartment.of(getLanguageExtension(props.language)),
-      readOnlyCompartment.of([
-        EditorState.readOnly.of(props.readonly),
-        EditorView.editable.of(!props.readonly)
-      ]),
+      readOnlyCompartment.of(EditorState.readOnly.of(props.readonly)),
       wrapCompartment.of(localWordWrap.value ? EditorView.lineWrapping : []),
       // Listen to state changes
       EditorView.updateListener.of((update) => {
@@ -243,10 +280,7 @@ watch(
   (isReadonly) => {
     if (!editorView) return
     editorView.dispatch({
-      effects: readOnlyCompartment.reconfigure([
-        EditorState.readOnly.of(isReadonly),
-        EditorView.editable.of(!isReadonly)
-      ])
+      effects: readOnlyCompartment.reconfigure(EditorState.readOnly.of(isReadonly))
     })
   }
 )
@@ -404,8 +438,46 @@ function focus() {
   editorView?.focus()
 }
 
+function handleContainerKeyDown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F' || e.code === 'KeyF')) {
+    e.preventDefault()
+    e.stopPropagation()
+    openFind()
+  }
+}
+
+function openFind() {
+  if (!editorView) return
+  openSearchPanel(editorView)
+  nextTick(() => {
+    const searchInput = editorHost.value?.querySelector('.cm-textfield[name="search"]') as HTMLInputElement | null
+    if (searchInput) {
+      searchInput.focus()
+      searchInput.select()
+    }
+  })
+}
+
+function closeFind() {
+  if (!editorView) return
+  closeSearchPanel(editorView)
+  editorView.focus()
+}
+
+function toggleFind() {
+  if (!editorView) return
+  if (searchPanelOpen(editorView.state)) {
+    closeFind()
+  } else {
+    openFind()
+  }
+}
+
 defineExpose({
   focus,
+  openFind,
+  closeFind,
+  toggleFind,
   editorView,
   copy: handleCopy,
   clear: handleClear
@@ -423,6 +495,7 @@ onBeforeUnmount(() => {
 <template>
   <div
     class="m3-code-editor-container"
+    data-lenis-prevent
     :class="{
       'is-dragging': isDraggingOver,
       'is-readonly': readonly
@@ -432,6 +505,7 @@ onBeforeUnmount(() => {
       minHeight: minHeight,
       maxHeight: maxHeight
     }"
+    @keydown="handleContainerKeyDown"
     @dragover="handleDragOver"
     @dragleave="handleDragLeave"
     @drop="handleDrop"
@@ -472,6 +546,19 @@ onBeforeUnmount(() => {
       <div class="toolbar-right">
         <!-- Extra Actions Slot -->
         <slot name="actions" />
+
+        <!-- Find / Search in Editor -->
+        <button
+          v-if="showFind"
+          type="button"
+          class="toolbar-btn"
+          title="Find in Editor (Ctrl+F)"
+          aria-label="Find in Editor (Ctrl+F)"
+          @click="toggleFind"
+        >
+          <Search :size="14" />
+          <span class="btn-text">Find</span>
+        </button>
 
         <!-- Word Wrap Toggle -->
         <button

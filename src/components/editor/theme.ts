@@ -41,6 +41,78 @@ const baseEditorTheme = EditorView.theme({
     borderRadius: '4px',
     padding: '0 4px',
     margin: '0 2px'
+  },
+  // CodeMirror Search Panel
+  '.cm-panels': {
+    backgroundColor: 'var(--md-sys-color-surface-container)',
+    color: 'var(--md-sys-color-on-surface)',
+    zIndex: '15'
+  },
+  '.cm-panels-top': {
+    borderBottom: '1px solid var(--md-sys-color-outline-variant)'
+  },
+  '.cm-panels-bottom': {
+    borderTop: '1px solid var(--md-sys-color-outline-variant)'
+  },
+  '.cm-panel.cm-search': {
+    padding: '6px 12px',
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: '6px 10px',
+    fontFamily: 'var(--md-sys-typescale-font-family)',
+    fontSize: '12px'
+  },
+  '.cm-panel.cm-search .cm-textfield': {
+    fontFamily: 'var(--md-sys-typescale-font-family-mono, monospace)',
+    fontSize: '12px',
+    padding: '4px 8px',
+    borderRadius: '6px',
+    border: '1px solid var(--md-sys-color-outline-variant)',
+    backgroundColor: 'var(--md-sys-color-surface-container-lowest)',
+    color: 'var(--md-sys-color-on-surface)',
+    outline: 'none',
+    transition: 'border-color 0.15s ease, box-shadow 0.15s ease'
+  },
+  '.cm-panel.cm-search .cm-textfield:focus': {
+    borderColor: 'var(--md-sys-color-primary)',
+    boxShadow: '0 0 0 1px var(--md-sys-color-primary)'
+  },
+  '.cm-panel.cm-search .cm-button': {
+    backgroundColor: 'var(--md-sys-color-surface-container-high)',
+    color: 'var(--md-sys-color-on-surface)',
+    border: '1px solid var(--md-sys-color-outline-variant)',
+    borderRadius: '6px',
+    padding: '3px 8px',
+    fontSize: '12px',
+    fontWeight: '500',
+    cursor: 'pointer',
+    backgroundImage: 'none',
+    transition: 'all 0.15s ease'
+  },
+  '.cm-panel.cm-search .cm-button:hover': {
+    backgroundColor: 'var(--md-sys-color-surface-container-highest)',
+    borderColor: 'var(--md-sys-color-outline)'
+  },
+  '.cm-panel.cm-search .cm-button[name="close"]': {
+    padding: '2px 6px',
+    borderRadius: '4px',
+    fontSize: '14px',
+    lineHeight: '1',
+    marginLeft: 'auto'
+  },
+  '.cm-panel.cm-search label': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '4px',
+    fontSize: '12px',
+    color: 'var(--md-sys-color-on-surface-variant)',
+    cursor: 'pointer',
+    userSelect: 'none'
+  },
+  '.cm-panel.cm-search input[type="checkbox"]': {
+    accentColor: 'var(--md-sys-color-primary)',
+    cursor: 'pointer'
   }
 })
 
@@ -68,6 +140,14 @@ export const md3LightTheme = EditorView.theme({
   '.cm-cursor, .cm-dropCursor': {
     borderLeftColor: 'var(--md-sys-color-primary, #00668b)',
     borderLeftWidth: '2px'
+  },
+  '.cm-searchMatch': {
+    backgroundColor: 'rgba(250, 204, 21, 0.45)',
+    borderRadius: '2px'
+  },
+  '.cm-searchMatch.cm-searchMatch-selected': {
+    backgroundColor: 'rgba(245, 158, 11, 0.75)',
+    outline: '1px solid var(--md-sys-color-primary)'
   }
 }, { dark: false })
 
@@ -117,6 +197,14 @@ export const md3DarkTheme = EditorView.theme({
   '.cm-cursor, .cm-dropCursor': {
     borderLeftColor: 'var(--md-sys-color-primary, #7dd0ff)',
     borderLeftWidth: '2px'
+  },
+  '.cm-searchMatch': {
+    backgroundColor: 'rgba(250, 204, 21, 0.35)',
+    borderRadius: '2px'
+  },
+  '.cm-searchMatch.cm-searchMatch-selected': {
+    backgroundColor: 'rgba(245, 158, 11, 0.75)',
+    outline: '1px solid var(--md-sys-color-primary)'
   }
 }, { dark: true })
 
