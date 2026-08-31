@@ -145,12 +145,12 @@ const schemaOptions = ref<JsonSchemaOptions>(initialSaved.schemaOptions || {
 })
 
 let isHydrating = false
+let debounceSyncTimer: ReturnType<typeof setTimeout> | null = null
 
-// Sync changes to snapshot store
-watch(
-  [inputJson, outputCode, selectedTarget, tsOptions, goOptions, rustOptions, javaOptions, pythonOptions, csharpOptions, schemaOptions],
-  () => {
-    if (isHydrating) return
+function syncToSnapshot() {
+  if (isHydrating) return
+  if (debounceSyncTimer) clearTimeout(debounceSyncTimer)
+  debounceSyncTimer = setTimeout(() => {
     snapshotStore.setToolState('json-schema', {
       inputJson: inputJson.value,
       outputCode: outputCode.value,
@@ -163,16 +163,32 @@ watch(
       csharpOptions: { ...csharpOptions.value },
       schemaOptions: { ...schemaOptions.value }
     })
-  },
-  { deep: true }
-)
+  }, 150)
+}
 
 // Hydrate from snapshot store on external change
 watch(
   () => snapshotStore.toolStates['json-schema'],
   (newState) => {
-    if (newState && !isHydrating) {
-      isHydrating = true
+    if (!newState || isHydrating) return
+
+    // Guard against echo-back infinite loop by verifying actual changes
+    const hasChanged =
+      (newState.inputJson !== undefined && newState.inputJson !== inputJson.value) ||
+      (newState.outputCode !== undefined && newState.outputCode !== outputCode.value) ||
+      (newState.selectedTarget !== undefined && newState.selectedTarget !== selectedTarget.value) ||
+      (newState.tsOptions && JSON.stringify(newState.tsOptions) !== JSON.stringify(tsOptions.value)) ||
+      (newState.goOptions && JSON.stringify(newState.goOptions) !== JSON.stringify(goOptions.value)) ||
+      (newState.rustOptions && JSON.stringify(newState.rustOptions) !== JSON.stringify(rustOptions.value)) ||
+      (newState.javaOptions && JSON.stringify(newState.javaOptions) !== JSON.stringify(javaOptions.value)) ||
+      (newState.pythonOptions && JSON.stringify(newState.pythonOptions) !== JSON.stringify(pythonOptions.value)) ||
+      (newState.csharpOptions && JSON.stringify(newState.csharpOptions) !== JSON.stringify(csharpOptions.value)) ||
+      (newState.schemaOptions && JSON.stringify(newState.schemaOptions) !== JSON.stringify(schemaOptions.value))
+
+    if (!hasChanged) return
+
+    isHydrating = true
+    try {
       if (newState.inputJson !== undefined && newState.inputJson !== inputJson.value) {
         inputJson.value = newState.inputJson
       }
@@ -182,14 +198,31 @@ watch(
       if (newState.selectedTarget !== undefined && newState.selectedTarget !== selectedTarget.value) {
         selectedTarget.value = newState.selectedTarget
       }
-      if (newState.tsOptions) tsOptions.value = { ...newState.tsOptions }
-      if (newState.goOptions) goOptions.value = { ...newState.goOptions }
-      if (newState.rustOptions) rustOptions.value = { ...newState.rustOptions }
-      if (newState.javaOptions) javaOptions.value = { ...newState.javaOptions }
-      if (newState.pythonOptions) pythonOptions.value = { ...newState.pythonOptions }
-      if (newState.csharpOptions) csharpOptions.value = { ...newState.csharpOptions }
-      if (newState.schemaOptions) schemaOptions.value = { ...newState.schemaOptions }
-      isHydrating = false
+      if (newState.tsOptions && JSON.stringify(newState.tsOptions) !== JSON.stringify(tsOptions.value)) {
+        tsOptions.value = { ...newState.tsOptions }
+      }
+      if (newState.goOptions && JSON.stringify(newState.goOptions) !== JSON.stringify(goOptions.value)) {
+        goOptions.value = { ...newState.goOptions }
+      }
+      if (newState.rustOptions && JSON.stringify(newState.rustOptions) !== JSON.stringify(rustOptions.value)) {
+        rustOptions.value = { ...newState.rustOptions }
+      }
+      if (newState.javaOptions && JSON.stringify(newState.javaOptions) !== JSON.stringify(javaOptions.value)) {
+        javaOptions.value = { ...newState.javaOptions }
+      }
+      if (newState.pythonOptions && JSON.stringify(newState.pythonOptions) !== JSON.stringify(pythonOptions.value)) {
+        pythonOptions.value = { ...newState.pythonOptions }
+      }
+      if (newState.csharpOptions && JSON.stringify(newState.csharpOptions) !== JSON.stringify(csharpOptions.value)) {
+        csharpOptions.value = { ...newState.csharpOptions }
+      }
+      if (newState.schemaOptions && JSON.stringify(newState.schemaOptions) !== JSON.stringify(schemaOptions.value)) {
+        schemaOptions.value = { ...newState.schemaOptions }
+      }
+    } finally {
+      setTimeout(() => {
+        isHydrating = false
+      }, 50)
     }
   },
   { deep: true }
@@ -223,6 +256,7 @@ function handleGenerate() {
     outputCode.value = ''
     lastResult.value = null
     executionTimeMs.value = null
+    syncToSnapshot()
     return
   }
 
@@ -250,6 +284,8 @@ function handleGenerate() {
   } catch (err: any) {
     genError.value = err.message || 'Generation error'
   }
+
+  syncToSnapshot()
 }
 
 function selectTarget(target: TargetLanguage) {
@@ -257,9 +293,15 @@ function selectTarget(target: TargetLanguage) {
   handleGenerate()
 }
 
-watch(inputJson, () => {
-  handleGenerate()
-})
+// Watch inputs and configuration changes to trigger generation and state sync
+watch(
+  [inputJson, selectedTarget, tsOptions, goOptions, rustOptions, javaOptions, pythonOptions, csharpOptions, schemaOptions],
+  () => {
+    if (isHydrating) return
+    handleGenerate()
+  },
+  { deep: true }
+)
 
 function handleLoadSample() {
   inputJson.value = sampleJson
@@ -272,6 +314,7 @@ function handleClear() {
   lastResult.value = null
   genError.value = null
   executionTimeMs.value = null
+  syncToSnapshot()
 }
 
 onMounted(() => {
