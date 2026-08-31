@@ -7,6 +7,60 @@ export interface UseSmoothScrollOptions {
   contentRef?: Ref<HTMLElement | null>
 }
 
+function shouldPreventSmoothScroll(node: HTMLElement, wrapper: HTMLElement): boolean {
+  if (!node || !(node instanceof HTMLElement)) return false
+
+  // 1. Explicit data-lenis-prevent opt-outs
+  if (
+    node.hasAttribute('data-lenis-prevent') ||
+    node.hasAttribute('data-lenis-prevent-wheel') ||
+    node.hasAttribute('data-lenis-prevent-touch') ||
+    node.closest('[data-lenis-prevent], [data-lenis-prevent-wheel], [data-lenis-prevent-touch]')
+  ) {
+    return true
+  }
+
+  // 2. CodeMirror editors, scrollers, search panels, and code editor containers
+  if (
+    node.closest(
+      '.cm-editor, .cm-scroller, .cm-content, .codemirror-wrapper, .m3-code-editor-container, .cm-panel, .cm-search'
+    )
+  ) {
+    return true
+  }
+
+  // 3. Native interactive text/input controls and pre/code blocks
+  if (node.closest('textarea, input, select, pre, code, md-outlined-text-field, md-filled-text-field')) {
+    return true
+  }
+
+  // 4. Traverse up to check if any nested container has its own scrollable overflow
+  let curr: HTMLElement | null = node
+  while (curr && curr !== wrapper && curr !== document.body && curr !== document.documentElement) {
+    if (curr.hasAttribute('data-lenis-prevent')) return true
+
+    try {
+      const style = window.getComputedStyle(curr)
+      const isScrollableY =
+        (style.overflowY === 'auto' || style.overflowY === 'scroll') &&
+        curr.scrollHeight > curr.clientHeight
+      const isScrollableX =
+        (style.overflowX === 'auto' || style.overflowX === 'scroll') &&
+        curr.scrollWidth > curr.clientWidth
+
+      if (isScrollableY || isScrollableX) {
+        return true
+      }
+    } catch {
+      // Ignore getComputedStyle errors on detached elements
+    }
+
+    curr = curr.parentElement
+  }
+
+  return false
+}
+
 export function useSmoothScroll(options: UseSmoothScrollOptions) {
   const { wrapperRef, contentRef } = options
   const settingsStore = useSettingsStore()
@@ -34,7 +88,9 @@ export function useSmoothScroll(options: UseSmoothScrollOptions) {
         smoothWheel: true,
         wheelMultiplier: settingsStore.scrollMultiplier || 1.25,
         touchMultiplier: 1.0,
-        infinite: false
+        infinite: false,
+        allowNestedScroll: true,
+        prevent: (node: HTMLElement) => shouldPreventSmoothScroll(node, wrapper)
       })
 
       lenis.value = instance
