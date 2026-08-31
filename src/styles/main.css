@@ -52,6 +52,11 @@ html.lenis body {
   overscroll-behavior: contain;
 }
 
+.cm-editor,
+.cm-scroller {
+  overscroll-behavior: contain;
+}
+
 .lenis.lenis-stopped {
   overflow: hidden;
 }
