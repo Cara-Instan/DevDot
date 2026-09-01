@@ -1,15 +1,10 @@
-name: DevDot CI/CD Release Pipeline
+name: DevDot CI Test & Verification Pipeline
 
 on:
   push:
     branches: [ main ]
-    tags:
-      - 'v*'
-      - '[0-9]+.[0-9]+.[0-9]+*'
   pull_request:
     branches: [ main ]
-  release:
-    types: [ published, prereleased ]
   workflow_dispatch:
 
 concurrency:
@@ -18,7 +13,7 @@ concurrency:
 
 jobs:
   # ==============================================================================
-  # Job 1: Verification, Lint, Typecheck, and Automated Test Suites
+  # Job: Verification, Lint, Typecheck, and Automated Test Suites
   # ==============================================================================
   verify-and-test:
     name: Verify & Test Suite
@@ -66,105 +61,3 @@ jobs:
       - name: Execute PWA & Offline Service Worker Verification
         run: npm run test:pwa
 
-  # ==============================================================================
-  # Job 2: Web PWA Production Bundle & Static Hosting Deployment
-  # ==============================================================================
-  build-pwa-web:
-    name: Build PWA Web Bundle
-    needs: verify-and-test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: 'npm'
-
-      - name: Install Dependencies
-        run: npm ci
-
-      - name: Build Web PWA Distribution
-        run: npm run build
-
-      - name: Verify Service Worker & Web Manifest Output
-        run: |
-          test -f dist/sw.js || { echo "Missing dist/sw.js service worker!"; exit 1; }
-          test -f dist/manifest.webmanifest || { echo "Missing dist/manifest.webmanifest!"; exit 1; }
-          echo "PWA Web build verification successful!"
-
-      - name: Upload Web PWA Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: devdot-web-pwa
-          path: dist/
-          retention-days: 14
-
-  # ==============================================================================
-  # Job 3: Tauri Desktop Multi-Platform Matrix Build
-  # ==============================================================================
-  build-tauri-desktop:
-    name: Build Desktop (${{ matrix.platform }})
-    needs: verify-and-test
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'windows-x64'
-            os: windows-latest
-            rust-target: 'x86_64-pc-windows-msvc'
-            tauri-args: ''
-          - platform: 'macos-universal'
-            os: macos-latest
-            rust-target: 'x86_64-apple-darwin, aarch64-apple-darwin'
-            tauri-args: '--target universal-apple-darwin'
-          - platform: 'linux-x64'
-            os: ubuntu-22.04
-            rust-target: 'x86_64-unknown-linux-gnu'
-            tauri-args: ''
-
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: 'npm'
-
-      - name: Install Rust Stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.rust-target }}
-
-      - name: Rust Dependency Cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - name: Install Linux Build Dependencies (Ubuntu)
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev libxdo-dev
-
-      - name: Install Frontend Dependencies
-        run: npm ci
-
-      - name: Build Tauri Desktop Package
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: v__VERSION__
-          releaseName: 'DevDot v__VERSION__'
-          releaseBody: 'See changelog for details on this release.'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.tauri-args }}
