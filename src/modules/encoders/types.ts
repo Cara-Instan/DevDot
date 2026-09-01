@@ -6,6 +6,7 @@ export interface Base64Options {
   pad?: boolean
   dataUriPrefix?: boolean
   mimeType?: string
+  wrap?: 'none' | '64' | '76'
 }
 
 export interface Base64Result {

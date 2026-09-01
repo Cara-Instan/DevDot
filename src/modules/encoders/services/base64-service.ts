@@ -49,6 +49,12 @@ export function encodeBase64(input: string, options: Base64Options = {}): Base64
   if (options.dataUriPrefix) {
     const mime = options.mimeType || 'text/plain;charset=utf-8'
     base64 = `data:${mime};base64,${base64}`
+  } else if (options.wrap && options.wrap !== 'none') {
+    const wrapLen = parseInt(options.wrap, 10)
+    if (wrapLen > 0) {
+      const chunks = base64.match(new RegExp(`.{1,${wrapLen}}`, 'g'))
+      if (chunks) base64 = chunks.join('\n')
+    }
   }
 
   return {
@@ -72,7 +78,9 @@ export function decodeBase64(input: string): Base64Result {
   if (dataUriMatch) {
     isDataUri = true
     mimeType = dataUriMatch[1] || 'application/octet-stream'
-    cleaned = dataUriMatch[2].trim()
+    cleaned = dataUriMatch[2].trim().replace(/\s+/g, '')
+  } else {
+    cleaned = cleaned.replace(/\s+/g, '')
   }
 
   const bytes = base64ToBytes(cleaned)
