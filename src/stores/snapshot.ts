@@ -1,6 +1,25 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useNavigationStore, ALL_TOOLS } from './navigation'
+import { useTabStore } from './tabs'
+
+const STORAGE_KEY = 'devdot_tool_sessions_v1'
+
+function loadPersistedToolStates(): Record<string, Record<string, any>> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed
+      }
+    }
+  } catch (err) {
+    console.warn('[SnapshotStore] Failed to load persisted tool states:', err)
+  }
+  return {}
+}
+
 
 /**
  * Tab session data representation conforming to JSON Schema Draft 2020-12
@@ -114,26 +133,90 @@ export function validateSnapshot(data: unknown): SnapshotValidationResult {
 }
 
 export const useSnapshotStore = defineStore('snapshot', () => {
-  // Reactive tool states indexed by toolId
-  const toolStates = ref<Record<string, Record<string, any>>>({})
+  // Reactive tool states indexed by tabId or toolId
+  const toolStates = ref<Record<string, Record<string, any>>>(loadPersistedToolStates())
   const lastExportedAt = ref<string | null>(null)
   const lastImportedAt = ref<string | null>(null)
   const lastImportedSnapshot = ref<ToolkitSnapshot | null>(null)
   const isImporting = ref<boolean>(false)
   const isExporting = ref<boolean>(false)
 
+  function persistToStorage() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toolStates.value))
+    } catch (err) {
+      console.warn('[SnapshotStore] Failed to persist tool states to localStorage:', err)
+    }
+  }
+
+  // Watch and persist tool states to localStorage
+  watch(
+    toolStates,
+    () => {
+      persistToStorage()
+    },
+    { deep: true }
+  )
+
   /**
-   * Set or update state for a specific tool
+   * Set or update state for a specific tab and fallback tool
+   */
+  function setTabState(tabId: string, toolId: string, state: Record<string, any>) {
+    const existingTabState = toolStates.value[tabId] || toolStates.value[toolId] || {}
+    const updated = {
+      ...existingTabState,
+      ...state
+    }
+    toolStates.value[tabId] = updated
+    toolStates.value[toolId] = updated
+    persistToStorage()
+  }
+
+  /**
+   * Set or update state for a specific tool (backwards compatible)
    */
   function setToolState(toolId: string, state: Record<string, any>) {
     toolStates.value[toolId] = {
       ...(toolStates.value[toolId] || {}),
       ...state
     }
+    persistToStorage()
   }
 
   /**
-   * Get registered state for a specific tool
+   * Get registered state for a specific tab, falling back to toolId and then defaultVal
+   */
+  function getTabOrToolState<T = Record<string, any>>(tabId: string | undefined, toolId: string, defaultVal: T): T {
+    if (tabId && toolStates.value[tabId]) {
+      return toolStates.value[tabId] as T
+    }
+    if (toolStates.value[toolId]) {
+      return toolStates.value[toolId] as T
+    }
+    return defaultVal
+  }
+
+  /**
+   * Clone state from one tab to another (e.g. on tab duplication)
+   */
+  function cloneTabState(sourceTabId: string, targetTabId: string, toolId: string) {
+    const sourceState = toolStates.value[sourceTabId] || toolStates.value[toolId] || {}
+    toolStates.value[targetTabId] = JSON.parse(JSON.stringify(sourceState))
+    persistToStorage()
+  }
+
+  /**
+   * Remove state for a closed tab
+   */
+  function removeTabState(tabId: string) {
+    if (toolStates.value[tabId]) {
+      delete toolStates.value[tabId]
+      persistToStorage()
+    }
+  }
+
+  /**
+   * Get registered state for a specific tool (backwards compatible)
    */
   function getToolState<T = Record<string, any>>(toolId: string): T | undefined
   function getToolState<T = Record<string, any>>(toolId: string, defaultVal: T): T
@@ -151,24 +234,22 @@ export const useSnapshotStore = defineStore('snapshot', () => {
   }): ToolkitSnapshot {
     isExporting.value = true
     const navStore = useNavigationStore()
+    const tabStore = useTabStore()
 
-    const availableToolIds = Object.keys(toolStates.value)
-    const targetToolIds = options?.selectedToolIds && options.selectedToolIds.length > 0
-      ? options.selectedToolIds
-      : availableToolIds.length > 0
-        ? availableToolIds
-        : [navStore.activeToolId]
-
+    const availableTabs = tabStore.tabs
     const tabs: TabSession[] = []
 
-    for (const toolId of targetToolIds) {
-      const toolDef = ALL_TOOLS.find((t) => t.id === toolId)
-      const title = toolDef ? toolDef.name : toolId
-      const state = toolStates.value[toolId] || { active: true, updatedAt: Date.now() }
+    for (const tab of availableTabs) {
+      if (options?.selectedToolIds && options.selectedToolIds.length > 0) {
+        if (!options.selectedToolIds.includes(tab.toolId)) continue
+      }
+      const toolDef = ALL_TOOLS.find((t) => t.id === tab.toolId)
+      const title = tab.customTitle || (toolDef ? toolDef.name : tab.toolId)
+      const state = toolStates.value[tab.id] || toolStates.value[tab.toolId] || { active: true, updatedAt: Date.now() }
 
       tabs.push({
-        id: `tab-${toolId}`,
-        toolId,
+        id: tab.id,
+        toolId: tab.toolId,
         title,
         state: JSON.parse(JSON.stringify(state)) // deep clone
       })
@@ -180,7 +261,7 @@ export const useSnapshotStore = defineStore('snapshot', () => {
         id: `tab-${navStore.activeToolId}`,
         toolId: navStore.activeToolId,
         title: navStore.activeTool.name,
-        state: { timestamp: Date.now() }
+        state: toolStates.value[navStore.activeToolId] || { timestamp: Date.now() }
       })
     }
 
@@ -195,7 +276,7 @@ export const useSnapshotStore = defineStore('snapshot', () => {
         exportedBy: 'DevDot v0.1.0 (Air-Gapped Client)',
         appVersion: '0.1.0'
       },
-      activeTabId: navStore.activeToolId,
+      activeTabId: tabStore.activeTabId || navStore.activeToolId,
       tabs
     }
 
@@ -281,18 +362,21 @@ export const useSnapshotStore = defineStore('snapshot', () => {
     }
 
     const navStore = useNavigationStore()
+    const tabStore = useTabStore()
     let restoredCount = 0
 
     // Hydrate all tab states in Pinia
     for (const tab of validation.snapshot.tabs) {
-      toolStates.value[tab.toolId] = JSON.parse(JSON.stringify(tab.state))
+      const clonedState = JSON.parse(JSON.stringify(tab.state))
+      toolStates.value[tab.id] = clonedState
+      toolStates.value[tab.toolId] = clonedState
       restoredCount++
     }
+    persistToStorage()
 
-    // Restore active tab
-    if (validation.snapshot.activeTabId) {
-      navStore.selectTool(validation.snapshot.activeTabId)
-    }
+    // Restore tabs in TabStore
+    tabStore.restoreTabsFromSnapshot(validation.snapshot.tabs, validation.snapshot.activeTabId)
+    navStore.activeToolId = tabStore.activeToolId
 
     lastImportedAt.value = new Date().toISOString()
     lastImportedSnapshot.value = validation.snapshot
@@ -310,6 +394,11 @@ export const useSnapshotStore = defineStore('snapshot', () => {
   function clearSession() {
     toolStates.value = {}
     lastImportedSnapshot.value = null
+    try {
+      localStorage.removeItem(STORAGE_KEY)
+    } catch {
+      // ignore
+    }
   }
 
   return {
@@ -321,6 +410,10 @@ export const useSnapshotStore = defineStore('snapshot', () => {
     isImporting,
     isExporting,
     // Actions
+    setTabState,
+    getTabOrToolState,
+    cloneTabState,
+    removeTabState,
     setToolState,
     getToolState,
     exportSession,
