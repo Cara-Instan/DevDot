@@ -18,13 +18,14 @@ import {
   Maximize2,
   Minimize2,
   Search,
-  Plus,
-  Minus,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ArrowDownAZ,
+  FileCode,
+  Sparkles
 } from 'lucide-vue-next'
 import {
-  M3Button,
-  M3Switch
+  CodeEditor,
+  M3Tooltip
 } from '@/components'
 import { useExecutionEngine } from '@/composables'
 import { useSnapshotStore } from '@/stores'
@@ -97,10 +98,31 @@ const execTimeMs = ref<number | null>(null)
 const currentDiffIndex = ref<number>(0)
 const isCopied = ref(false)
 
-// DOM scroll containers for sync scroll
+// DOM scroll containers for sync scroll & programmatic scrolling lock
 const leftScrollRef = ref<HTMLDivElement | null>(null)
 const rightScrollRef = ref<HTMLDivElement | null>(null)
 const isSyncingScroll = ref(false)
+const isProgrammaticScrolling = ref(false)
+let programmaticScrollTimer: any = null
+
+// In-Editor Find States for Visual Diff Modes
+const leftFindOpen = ref(false)
+const leftFindQuery = ref('')
+const leftFindCase = ref(false)
+const leftFindIndex = ref(0)
+const leftFindInputRef = ref<HTMLInputElement | null>(null)
+
+const rightFindOpen = ref(false)
+const rightFindQuery = ref('')
+const rightFindCase = ref(false)
+const rightFindIndex = ref(0)
+const rightFindInputRef = ref<HTMLInputElement | null>(null)
+
+const unifiedFindOpen = ref(false)
+const unifiedFindQuery = ref('')
+const unifiedFindCase = ref(false)
+const unifiedFindIndex = ref(0)
+const unifiedFindInputRef = ref<HTMLInputElement | null>(null)
 
 // Sync changes to snapshot store
 watch(
@@ -244,14 +266,42 @@ function handleFullscreenChange() {
 }
 
 function handleKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && isFullscreen.value) {
-    toggleFullscreen()
+  if (e.key === 'Escape') {
+    if (isFullscreen.value) {
+      toggleFullscreen()
+    } else if (leftFindOpen.value || rightFindOpen.value || unifiedFindOpen.value) {
+      leftFindOpen.value = false
+      rightFindOpen.value = false
+      unifiedFindOpen.value = false
+    }
+  } else if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F' || e.code === 'KeyF')) {
+    if (!editMode.value) {
+      e.preventDefault()
+      if (viewMode.value === 'unified') {
+        toggleUnifiedFind()
+      } else {
+        if (!leftFindOpen.value && !rightFindOpen.value) {
+          leftFindOpen.value = true
+          rightFindOpen.value = true
+          nextTick(() => {
+            leftFindInputRef.value?.focus()
+            leftFindInputRef.value?.select()
+          })
+        } else {
+          leftFindOpen.value = true
+          nextTick(() => {
+            leftFindInputRef.value?.focus()
+            leftFindInputRef.value?.select()
+          })
+        }
+      }
+    }
   }
 }
 
-// Synchronized scrolling
+// Synchronized scrolling with programmatic scroll safety
 function handleLeftScroll(e: Event) {
-  if (isSyncingScroll.value) return
+  if (isProgrammaticScrolling.value || isSyncingScroll.value) return
   isSyncingScroll.value = true
   const target = e.target as HTMLElement
   if (rightScrollRef.value) {
@@ -259,12 +309,14 @@ function handleLeftScroll(e: Event) {
     rightScrollRef.value.scrollLeft = target.scrollLeft
   }
   nextTick(() => {
-    isSyncingScroll.value = false
+    if (!isProgrammaticScrolling.value) {
+      isSyncingScroll.value = false
+    }
   })
 }
 
 function handleRightScroll(e: Event) {
-  if (isSyncingScroll.value) return
+  if (isProgrammaticScrolling.value || isSyncingScroll.value) return
   isSyncingScroll.value = true
   const target = e.target as HTMLElement
   if (leftScrollRef.value) {
@@ -272,8 +324,61 @@ function handleRightScroll(e: Event) {
     leftScrollRef.value.scrollLeft = target.scrollLeft
   }
   nextTick(() => {
-    isSyncingScroll.value = false
+    if (!isProgrammaticScrolling.value) {
+      isSyncingScroll.value = false
+    }
   })
+}
+
+// Smooth programmatic container scrolling (isolated to diff viewer containers)
+function scrollToLine(
+  lineIndex: number,
+  options: { targetColumn?: 'left' | 'right' | 'both' | 'unified'; highlightId?: string } = {}
+) {
+  const { targetColumn = 'both', highlightId } = options
+  isProgrammaticScrolling.value = true
+  isSyncingScroll.value = true
+  clearTimeout(programmaticScrollTimer)
+
+  if (viewMode.value === 'unified') {
+    const rowElem = document.getElementById(`diff-row-${lineIndex}`)
+    const container = document.querySelector('.unified-scroll-area') as HTMLElement | null
+    if (rowElem && container) {
+      const targetTop = rowElem.offsetTop - container.clientHeight / 2 + rowElem.clientHeight / 2
+      container.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' })
+    }
+  } else {
+    const leftRow = document.getElementById(`diff-row-${lineIndex}`)
+    const rightRow = document.getElementById(`diff-row-right-${lineIndex}`)
+    const rowToMeasure = (targetColumn === 'right' ? rightRow : leftRow) || leftRow || rightRow
+
+    if (rowToMeasure) {
+      const container =
+        (targetColumn === 'right' ? rightScrollRef.value : leftScrollRef.value) ||
+        leftScrollRef.value ||
+        rightScrollRef.value
+      if (container) {
+        const targetTop = rowToMeasure.offsetTop - container.clientHeight / 2 + rowToMeasure.clientHeight / 2
+        const boundedTop = Math.max(0, targetTop)
+
+        if (leftScrollRef.value) {
+          leftScrollRef.value.scrollTo({ top: boundedTop, behavior: 'smooth' })
+        }
+        if (rightScrollRef.value) {
+          rightScrollRef.value.scrollTo({ top: boundedTop, behavior: 'smooth' })
+        }
+      }
+    }
+  }
+
+  if (highlightId) {
+    pulseHighlight(highlightId)
+  }
+
+  programmaticScrollTimer = setTimeout(() => {
+    isProgrammaticScrolling.value = false
+    isSyncingScroll.value = false
+  }, 450)
 }
 
 // Diff jumping navigation
@@ -283,11 +388,17 @@ function jumpToDiff(index: number) {
   if (!marker) return
 
   currentDiffIndex.value = index
-  const rowId = `diff-row-${marker.lineIndex}`
-  const targetElem = document.getElementById(rowId)
-  if (targetElem) {
-    targetElem.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
+  const targetId =
+    viewMode.value === 'unified'
+      ? `diff-row-${marker.lineIndex}`
+      : marker.type === 'added'
+      ? `diff-row-right-${marker.lineIndex}`
+      : `diff-row-${marker.lineIndex}`
+
+  scrollToLine(marker.lineIndex, {
+    targetColumn: marker.type === 'added' ? 'right' : marker.type === 'removed' ? 'left' : 'both',
+    highlightId: targetId
+  })
 }
 
 function handleNextDiff() {
@@ -302,6 +413,184 @@ function handlePrevDiff() {
   let prev = currentDiffIndex.value - 1
   if (prev < 1) prev = diffResult.value.markers.length
   jumpToDiff(prev)
+}
+
+// In-Editor Search / Find Logic
+interface SearchMatch {
+  matchIdx: number
+  lineIndex: number
+  start: number
+  length: number
+}
+
+function findMatchesInLines(lines: { content: string }[], query: string, caseSensitive: boolean): SearchMatch[] {
+  if (!query.trim() || !lines.length) return []
+  const matches: SearchMatch[] = []
+  const flags = caseSensitive ? 'g' : 'gi'
+  let regex: RegExp
+  try {
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    regex = new RegExp(escaped, flags)
+  } catch {
+    return []
+  }
+
+  let counter = 1
+  lines.forEach((line, lineIndex) => {
+    if (!line.content) return
+    let m: RegExpExecArray | null
+    regex.lastIndex = 0
+    while ((m = regex.exec(line.content)) !== null) {
+      matches.push({
+        matchIdx: counter++,
+        lineIndex,
+        start: m.index,
+        length: m[0].length
+      })
+      if (regex.lastIndex === m.index) {
+        regex.lastIndex++
+      }
+    }
+  })
+  return matches
+}
+
+const leftMatches = computed(() => {
+  return findMatchesInLines(diffResult.value?.leftLines || [], leftFindQuery.value, leftFindCase.value)
+})
+const leftMatchCount = computed(() => leftMatches.value.length)
+
+const rightMatches = computed(() => {
+  return findMatchesInLines(diffResult.value?.rightLines || [], rightFindQuery.value, rightFindCase.value)
+})
+const rightMatchCount = computed(() => rightMatches.value.length)
+
+const unifiedMatches = computed(() => {
+  return findMatchesInLines(diffResult.value?.unifiedLines || [], unifiedFindQuery.value, unifiedFindCase.value)
+})
+const unifiedMatchCount = computed(() => unifiedMatches.value.length)
+
+watch(leftMatchCount, (newCount) => {
+  if (newCount === 0) leftFindIndex.value = 0
+  else if (leftFindIndex.value === 0 || leftFindIndex.value > newCount) leftFindIndex.value = 1
+})
+
+watch(rightMatchCount, (newCount) => {
+  if (newCount === 0) rightFindIndex.value = 0
+  else if (rightFindIndex.value === 0 || rightFindIndex.value > newCount) rightFindIndex.value = 1
+})
+
+watch(unifiedMatchCount, (newCount) => {
+  if (newCount === 0) unifiedFindIndex.value = 0
+  else if (unifiedFindIndex.value === 0 || unifiedFindIndex.value > newCount) unifiedFindIndex.value = 1
+})
+
+function navigateLeftMatch(direction: 'next' | 'prev') {
+  if (leftMatchCount.value === 0) return
+  if (direction === 'next') {
+    leftFindIndex.value = leftFindIndex.value >= leftMatchCount.value ? 1 : leftFindIndex.value + 1
+  } else {
+    leftFindIndex.value = leftFindIndex.value <= 1 ? leftMatchCount.value : leftFindIndex.value - 1
+  }
+  const current = leftMatches.value[leftFindIndex.value - 1]
+  if (current) {
+    scrollToLine(current.lineIndex, {
+      targetColumn: 'left',
+      highlightId: `diff-row-${current.lineIndex}`
+    })
+  }
+}
+
+function navigateRightMatch(direction: 'next' | 'prev') {
+  if (rightMatchCount.value === 0) return
+  if (direction === 'next') {
+    rightFindIndex.value = rightFindIndex.value >= rightMatchCount.value ? 1 : rightFindIndex.value + 1
+  } else {
+    rightFindIndex.value = rightFindIndex.value <= 1 ? rightMatchCount.value : rightFindIndex.value - 1
+  }
+  const current = rightMatches.value[rightFindIndex.value - 1]
+  if (current) {
+    scrollToLine(current.lineIndex, {
+      targetColumn: 'right',
+      highlightId: `diff-row-right-${current.lineIndex}`
+    })
+  }
+}
+
+function navigateUnifiedMatch(direction: 'next' | 'prev') {
+  if (unifiedMatchCount.value === 0) return
+  if (direction === 'next') {
+    unifiedFindIndex.value = unifiedFindIndex.value >= unifiedMatchCount.value ? 1 : unifiedFindIndex.value + 1
+  } else {
+    unifiedFindIndex.value = unifiedFindIndex.value <= 1 ? unifiedMatchCount.value : unifiedFindIndex.value - 1
+  }
+  const current = unifiedMatches.value[unifiedFindIndex.value - 1]
+  if (current) {
+    scrollToLine(current.lineIndex, {
+      targetColumn: 'unified',
+      highlightId: `diff-row-${current.lineIndex}`
+    })
+  }
+}
+
+function toggleLeftFind() {
+  leftFindOpen.value = !leftFindOpen.value
+  if (leftFindOpen.value) {
+    nextTick(() => {
+      leftFindInputRef.value?.focus()
+      leftFindInputRef.value?.select()
+    })
+  }
+}
+
+function toggleRightFind() {
+  rightFindOpen.value = !rightFindOpen.value
+  if (rightFindOpen.value) {
+    nextTick(() => {
+      rightFindInputRef.value?.focus()
+      rightFindInputRef.value?.select()
+    })
+  }
+}
+
+function toggleUnifiedFind() {
+  unifiedFindOpen.value = !unifiedFindOpen.value
+  if (unifiedFindOpen.value) {
+    nextTick(() => {
+      unifiedFindInputRef.value?.focus()
+      unifiedFindInputRef.value?.select()
+    })
+  }
+}
+
+function getSearchHighlightChunks(text: string, query: string, caseSensitive: boolean) {
+  if (!query || !text) return [{ text, isMatch: false }]
+  const chunks: { text: string; isMatch: boolean }[] = []
+  const flags = caseSensitive ? 'g' : 'gi'
+  let regex: RegExp
+  try {
+    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    regex = new RegExp(escaped, flags)
+  } catch {
+    return [{ text, isMatch: false }]
+  }
+
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      chunks.push({ text: text.slice(lastIndex, match.index), isMatch: false })
+    }
+    chunks.push({ text: match[0], isMatch: true })
+    lastIndex = regex.lastIndex
+    if (regex.lastIndex === match.index) {
+      regex.lastIndex++
+    }
+  }
+  if (lastIndex < text.length) {
+    chunks.push({ text: text.slice(lastIndex), isMatch: false })
+  }
+  return chunks.length ? chunks : [{ text, isMatch: false }]
 }
 
 // Copy diff report or unified patch
@@ -370,16 +659,6 @@ const filteredStructuralDiff = computed(() => {
 })
 
 // Structural Panel Window Resizing Handlers
-function increasePanelHeight(step = 80) {
-  isPanelMaximized.value = false
-  structuralPanelHeight.value = Math.min(650, structuralPanelHeight.value + step)
-}
-
-function decreasePanelHeight(step = 80) {
-  isPanelMaximized.value = false
-  structuralPanelHeight.value = Math.max(120, structuralPanelHeight.value - step)
-}
-
 function setPanelPreset(height: number) {
   isPanelMaximized.value = false
   structuralPanelHeight.value = height
@@ -435,42 +714,74 @@ function pulseHighlight(id: string) {
   }, 2200)
 }
 
-function handleStructuralRowClick(item: StructuralDiffItem) {
-  if (!diffResult.value) return
+function findLineIndexForStructuralDiff(item: StructuralDiffItem): { lineIndex: number; targetColumn: 'left' | 'right' | 'both' } | null {
+  if (!diffResult.value) return null
+  const { path, type } = item
 
-  const pathParts = item.path.replace(/^\$\.?/, '').split('.')
-  const keySegment = pathParts.pop()?.replace(/\[\d+\]$/, '') || ''
+  const rawSegments = path.replace(/^root\.?/, '').split('.').filter(Boolean)
+  const lastSegment = rawSegments[rawSegments.length - 1] || ''
+  const cleanKey = lastSegment.replace(/\[\d+\]$/, '')
 
-  let targetId = ''
+  const lines =
+    viewMode.value === 'unified'
+      ? diffResult.value.unifiedLines
+      : type === 'added'
+      ? diffResult.value.rightLines
+      : diffResult.value.leftLines
 
-  if (viewMode.value === 'unified') {
-    const lines = diffResult.value.unifiedLines
-    const idx = lines.findIndex((l) => keySegment && l.content.includes(`"${keySegment}"`))
-    if (idx !== -1) {
-      targetId = `diff-row-${idx}`
-    }
-  } else {
-    if (item.type === 'added') {
-      const lines = diffResult.value.rightLines
-      const idx = lines.findIndex((l) => keySegment && l.content.includes(`"${keySegment}"`))
-      if (idx !== -1) {
-        targetId = `diff-row-right-${idx}`
-      }
-    } else {
-      const lines = diffResult.value.leftLines
-      const idx = lines.findIndex((l) => keySegment && l.content.includes(`"${keySegment}"`))
-      if (idx !== -1) {
-        targetId = `diff-row-${idx}`
-      }
+  let candidateIdx = -1
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (type === 'added' && line.type !== 'added') continue
+    if (type === 'removed' && line.type !== 'removed') continue
+    if (
+      (type === 'modified' || type === 'type_changed') &&
+      line.type !== 'modified' &&
+      line.type !== 'removed' &&
+      line.type !== 'added'
+    )
+      continue
+
+    if (cleanKey && line.content.includes(`"${cleanKey}"`)) {
+      candidateIdx = i
+      break
     }
   }
 
-  if (targetId) {
-    const rowElem = document.getElementById(targetId)
-    if (rowElem) {
-      rowElem.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      pulseHighlight(targetId)
+  if (candidateIdx === -1 && cleanKey) {
+    candidateIdx = lines.findIndex((l) => l.content.includes(`"${cleanKey}"`))
+  }
+
+  if (candidateIdx === -1 && item.newValue !== undefined) {
+    const valStr = JSON.stringify(item.newValue)
+    candidateIdx = lines.findIndex((l) => l.content.includes(valStr))
+  }
+
+  if (candidateIdx !== -1) {
+    return {
+      lineIndex: candidateIdx,
+      targetColumn: type === 'added' ? 'right' : type === 'removed' ? 'left' : 'both'
     }
+  }
+
+  return null
+}
+
+function handleStructuralRowClick(item: StructuralDiffItem) {
+  const match = findLineIndexForStructuralDiff(item)
+  if (match) {
+    const targetId =
+      viewMode.value === 'unified'
+        ? `diff-row-${match.lineIndex}`
+        : match.targetColumn === 'right'
+        ? `diff-row-right-${match.lineIndex}`
+        : `diff-row-${match.lineIndex}`
+
+    scrollToLine(match.lineIndex, {
+      targetColumn: match.targetColumn,
+      highlightId: targetId
+    })
   }
 }
 
@@ -536,193 +847,221 @@ onBeforeUnmount(() => {
     <div class="diff-toolbar">
       <div class="toolbar-left">
         <!-- View Mode Segment -->
-        <div class="control-group">
-          <label class="control-label">View:</label>
-          <div class="segment-group">
+        <div class="segment-group" role="group" aria-label="View Mode">
+          <M3Tooltip text="Side-by-Side Comparison" placement="bottom">
             <button
               type="button"
-              class="segment-btn"
+              class="icon-toggle-btn"
               :class="{ active: viewMode === 'side-by-side' }"
-              title="Side-by-Side Comparison"
+              aria-label="Side-by-Side View"
               @click="viewMode = 'side-by-side'"
             >
               <Columns2 :size="14" />
-              <span>Side-by-Side</span>
             </button>
+          </M3Tooltip>
+          <M3Tooltip text="Unified Stream View" placement="bottom">
             <button
               type="button"
-              class="segment-btn"
+              class="icon-toggle-btn"
               :class="{ active: viewMode === 'unified' }"
-              title="Unified Stream View"
+              aria-label="Unified Stream View"
               @click="viewMode = 'unified'"
             >
               <Rows3 :size="14" />
-              <span>Unified</span>
             </button>
-          </div>
+          </M3Tooltip>
         </div>
 
         <!-- Mobile Side-by-side Column Switcher (Visible on narrow viewports) -->
-        <div v-if="viewMode === 'side-by-side'" class="control-group mobile-column-tabs">
-          <label class="control-label">Pane:</label>
-          <div class="segment-group">
-            <button
-              type="button"
-              class="segment-btn"
-              :class="{ active: mobileSideTab === 'both' }"
-              @click="mobileSideTab = 'both'"
-            >
-              Split
-            </button>
-            <button
-              type="button"
-              class="segment-btn"
-              :class="{ active: mobileSideTab === 'left' }"
-              @click="mobileSideTab = 'left'"
-            >
-              Base
-            </button>
-            <button
-              type="button"
-              class="segment-btn"
-              :class="{ active: mobileSideTab === 'right' }"
-              @click="mobileSideTab = 'right'"
-            >
-              Modified
-            </button>
-          </div>
-        </div>
-
-        <!-- Sample Preset Selection -->
-        <div class="control-group sample-presets-group">
-          <label class="control-label">Samples:</label>
-          <div class="segment-group">
-            <button
-              type="button"
-              class="segment-btn"
-              @click="handleLoadPreset('apiResponse')"
-            >
-              API Sample
-            </button>
-            <button
-              type="button"
-              class="segment-btn"
-              @click="handleLoadPreset('config')"
-            >
-              Config Sample
-            </button>
-          </div>
-        </div>
-
-        <!-- Quick Toggles -->
-        <div class="toggle-control">
-          <M3Switch
-            v-model="sortKeys"
-            label="Sort Keys"
-          />
-        </div>
-
-        <div class="toggle-control">
-          <M3Switch
-            v-model="collapseUnchanged"
-            label="Collapse Unchanged"
-          />
-        </div>
-
-        <div class="toggle-control">
+        <div v-if="viewMode === 'side-by-side'" class="segment-group mobile-column-tabs">
           <button
             type="button"
-            class="mode-toggle-btn"
+            class="segment-text-btn"
+            :class="{ active: mobileSideTab === 'both' }"
+            @click="mobileSideTab = 'both'"
+          >
+            Split
+          </button>
+          <button
+            type="button"
+            class="segment-text-btn"
+            :class="{ active: mobileSideTab === 'left' }"
+            @click="mobileSideTab = 'left'"
+          >
+            Base
+          </button>
+          <button
+            type="button"
+            class="segment-text-btn"
+            :class="{ active: mobileSideTab === 'right' }"
+            @click="mobileSideTab = 'right'"
+          >
+            Mod
+          </button>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- Sample Presets -->
+        <div class="samples-group">
+          <M3Tooltip text="Load API Migration Sample" placement="bottom">
+            <button
+              type="button"
+              class="pill-sample-btn"
+              @click="handleLoadPreset('apiResponse')"
+            >
+              <Sparkles :size="12" />
+              <span>API Sample</span>
+            </button>
+          </M3Tooltip>
+          <M3Tooltip text="Load Cloud Config Sample" placement="bottom">
+            <button
+              type="button"
+              class="pill-sample-btn"
+              @click="handleLoadPreset('config')"
+            >
+              <FileCode :size="12" />
+              <span>Config Sample</span>
+            </button>
+          </M3Tooltip>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- Toggles: Sort Keys & Collapse Unchanged -->
+        <div class="toggles-group">
+          <M3Tooltip :text="sortKeys ? 'Sort Keys: Enabled' : 'Sort Object Keys Alphabetically (A-Z)'" placement="bottom">
+            <button
+              type="button"
+              class="icon-toggle-btn"
+              :class="{ active: sortKeys }"
+              aria-label="Sort Keys"
+              @click="sortKeys = !sortKeys"
+            >
+              <ArrowDownAZ :size="14" />
+            </button>
+          </M3Tooltip>
+
+          <M3Tooltip :text="collapseUnchanged ? 'Collapse Unchanged: Enabled' : 'Collapse Unchanged Code Blocks'" placement="bottom">
+            <button
+              type="button"
+              class="icon-toggle-btn"
+              :class="{ active: collapseUnchanged }"
+              aria-label="Collapse Unchanged"
+              @click="collapseUnchanged = !collapseUnchanged"
+            >
+              <Minimize2 :size="13" />
+            </button>
+          </M3Tooltip>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- Mode Toggle (Diff View vs Edit Input) -->
+        <M3Tooltip :text="editMode ? 'Switch to Visual Diff Viewer' : 'Switch to Edit Input Mode'" placement="bottom">
+          <button
+            type="button"
+            class="mode-badge-btn"
             :class="{ active: editMode }"
             @click="editMode = !editMode"
           >
-            <component :is="editMode ? Eye : Edit3" :size="14" />
-            <span>{{ editMode ? 'Diff View' : 'Edit Input' }}</span>
+            <component :is="editMode ? Eye : Edit3" :size="13" />
+            <span>{{ editMode ? 'Diff Mode' : 'Edit Input' }}</span>
           </button>
-        </div>
+        </M3Tooltip>
       </div>
 
       <div class="toolbar-right">
         <!-- Diff Jumping Navigator -->
-        <div v-if="diffResult?.markers.length" class="diff-navigator">
+        <div v-if="diffResult?.markers.length && !editMode" class="diff-navigator">
           <span class="diff-counter">
-            Diff <strong>{{ currentDiffIndex }}</strong> of {{ diffResult.markers.length }}
+            <strong>{{ currentDiffIndex || 1 }}</strong> / {{ diffResult.markers.length }}
           </span>
-          <button
-            type="button"
-            class="nav-arrow-btn"
-            title="Previous Difference"
-            @click="handlePrevDiff"
-          >
-            <ChevronUp :size="15" />
-          </button>
-          <button
-            type="button"
-            class="nav-arrow-btn"
-            title="Next Difference"
-            @click="handleNextDiff"
-          >
-            <ChevronDown :size="15" />
-          </button>
+          <M3Tooltip text="Previous Difference (Alt+▲)" placement="bottom">
+            <button
+              type="button"
+              class="nav-arrow-btn"
+              aria-label="Previous Difference"
+              @click="handlePrevDiff"
+            >
+              <ChevronUp :size="13" />
+            </button>
+          </M3Tooltip>
+          <M3Tooltip text="Next Difference (Alt+▼)" placement="bottom">
+            <button
+              type="button"
+              class="nav-arrow-btn"
+              aria-label="Next Difference"
+              @click="handleNextDiff"
+            >
+              <ChevronDown :size="13" />
+            </button>
+          </M3Tooltip>
         </div>
 
-        <M3Button
-          variant="tonal"
-          title="Swap Left and Right JSON"
-          @click="handleSwap"
-        >
-          <template #icon>
+        <!-- Swap -->
+        <M3Tooltip text="Swap Left and Right JSON" placement="bottom">
+          <button
+            type="button"
+            class="icon-action-btn"
+            aria-label="Swap JSON"
+            @click="handleSwap"
+          >
             <ArrowLeftRight :size="14" />
-          </template>
-          Swap
-        </M3Button>
+          </button>
+        </M3Tooltip>
 
-        <M3Button
-          variant="tonal"
-          title="Copy Diff Report / Patch"
-          @click="handleCopyDiff"
-        >
-          <template #icon>
+        <!-- Copy Patch -->
+        <M3Tooltip :text="isCopied ? 'Copied to Clipboard!' : 'Copy Unified Diff Patch'" placement="bottom">
+          <button
+            type="button"
+            class="icon-action-btn"
+            :class="{ active: isCopied }"
+            aria-label="Copy Patch"
+            @click="handleCopyDiff"
+          >
             <component :is="isCopied ? Check : Copy" :size="14" />
-          </template>
-          {{ isCopied ? 'Copied' : 'Copy Patch' }}
-        </M3Button>
+          </button>
+        </M3Tooltip>
 
-        <M3Button
-          variant="outlined"
-          title="Clear Inputs"
-          @click="handleClear"
-        >
-          <template #icon>
+        <!-- Clear -->
+        <M3Tooltip text="Clear Inputs" placement="bottom">
+          <button
+            type="button"
+            class="icon-action-btn btn-danger-hover"
+            aria-label="Clear Inputs"
+            @click="handleClear"
+          >
             <RotateCcw :size="14" />
-          </template>
-          Clear
-        </M3Button>
+          </button>
+        </M3Tooltip>
 
-        <!-- Fullscreen / Maximize Toggle Button -->
-        <M3Button
-          :variant="isFullscreen ? 'filled' : 'tonal'"
-          :title="isFullscreen ? 'Exit Fullscreen (Esc)' : 'Enter Fullscreen Mode'"
-          class="fullscreen-toggle-btn"
-          @click="toggleFullscreen"
-        >
-          <template #icon>
+        <div class="toolbar-divider"></div>
+
+        <!-- Fullscreen Toggle Button -->
+        <M3Tooltip :text="isFullscreen ? 'Exit Fullscreen (Esc)' : 'Enter Fullscreen Mode'" placement="bottom">
+          <button
+            type="button"
+            class="icon-action-btn fullscreen-btn"
+            :class="{ active: isFullscreen }"
+            aria-label="Toggle Fullscreen"
+            @click="toggleFullscreen"
+          >
             <component :is="isFullscreen ? Minimize2 : Maximize2" :size="14" />
-          </template>
-          {{ isFullscreen ? 'Exit Fullscreen' : 'Fullscreen' }}
-        </M3Button>
+          </button>
+        </M3Tooltip>
       </div>
     </div>
 
     <!-- Summary Stats Bar -->
-    <div v-if="diffResult" class="diff-stats-bar">
+    <div v-if="diffResult && !editMode" class="diff-stats-bar">
       <div class="stats-left">
         <!-- Match / Equality Badge -->
         <div
           class="status-badge"
           :class="diffResult.areEqual ? 'badge-identical' : 'badge-different'"
         >
-          <component :is="diffResult.areEqual ? FileCheck2 : FileX2" :size="14" />
+          <component :is="diffResult.areEqual ? FileCheck2 : FileX2" :size="13" />
           <span>{{ diffResult.areEqual ? '100% Identical' : `${diffResult.stats.similarityPercentage}% Similarity` }}</span>
         </div>
 
@@ -746,7 +1085,7 @@ onBeforeUnmount(() => {
 
         <!-- Total Changes -->
         <span class="stat-meta">
-          Total differences: <strong>{{ diffResult.stats.totalDifferences }}</strong> ({{ diffResult.stats.leftLinesCount }} vs {{ diffResult.stats.rightLinesCount }} lines)
+          <strong>{{ diffResult.stats.totalDifferences }}</strong> diffs ({{ diffResult.stats.leftLinesCount }} vs {{ diffResult.stats.rightLinesCount }} lines)
         </span>
       </div>
 
@@ -757,8 +1096,8 @@ onBeforeUnmount(() => {
           :class="{ active: showStructural }"
           @click="showStructural = !showStructural"
         >
-          <Table :size="14" />
-          <span>Structural Breakdown ({{ diffResult.structuralDiff.length }})</span>
+          <Table :size="13" />
+          <span>Structural ({{ diffResult.structuralDiff.length }})</span>
         </button>
         <span v-if="execTimeMs !== null" class="exec-time-pill">
           {{ execTimeMs }} ms
@@ -768,33 +1107,39 @@ onBeforeUnmount(() => {
 
     <!-- MAIN DIFF WORKSPACE -->
     <div class="diff-workspace">
-      <!-- EDIT MODE: Raw Inputs Side-by-Side -->
+      <!-- EDIT MODE: Rich CodeEditor Side-by-Side -->
       <template v-if="editMode">
         <div class="edit-mode-grid">
           <div class="edit-panel">
-            <div class="panel-header">
-              <span class="panel-title">Original (Base) JSON</span>
-              <span v-if="!diffResult?.leftValid" class="panel-error">Invalid JSON format</span>
-            </div>
-            <textarea
+            <CodeEditor
               v-model="leftJson"
-              class="raw-json-textarea"
+              language="json"
+              title="Original (Base) JSON"
               placeholder="Paste original JSON here..."
-              spellcheck="false"
-            ></textarea>
+              :line-numbers="true"
+              :show-find="true"
+              :show-copy="true"
+              :show-clear="true"
+              :show-upload="true"
+              :show-download="true"
+              height="100%"
+            />
           </div>
 
           <div class="edit-panel">
-            <div class="panel-header">
-              <span class="panel-title">Modified (Comparison) JSON</span>
-              <span v-if="!diffResult?.rightValid" class="panel-error">Invalid JSON format</span>
-            </div>
-            <textarea
+            <CodeEditor
               v-model="rightJson"
-              class="raw-json-textarea"
+              language="json"
+              title="Modified (Comparison) JSON"
               placeholder="Paste modified JSON here..."
-              spellcheck="false"
-            ></textarea>
+              :line-numbers="true"
+              :show-find="true"
+              :show-copy="true"
+              :show-clear="true"
+              :show-upload="true"
+              :show-download="true"
+              height="100%"
+            />
           </div>
         </div>
       </template>
@@ -816,6 +1161,71 @@ onBeforeUnmount(() => {
               <div class="header-indicator base-dot"></div>
               <span class="column-title">Original (Base)</span>
               <span class="line-badge">{{ diffResult?.leftLines.length || 0 }} rows</span>
+              <button
+                type="button"
+                class="col-find-toggle-btn"
+                :class="{ active: leftFindOpen }"
+                title="Find in Base (Ctrl+F)"
+                @click="toggleLeftFind"
+              >
+                <Search :size="13" />
+              </button>
+            </div>
+
+            <!-- Left In-Editor Find Bar -->
+            <div v-if="leftFindOpen" class="column-find-bar">
+              <div class="find-input-wrap">
+                <Search :size="12" class="find-icon" />
+                <input
+                  ref="leftFindInputRef"
+                  v-model="leftFindQuery"
+                  type="text"
+                  class="find-input"
+                  placeholder="Find in Base..."
+                  spellcheck="false"
+                  @keydown.enter.exact="navigateLeftMatch('next')"
+                  @keydown.shift.enter="navigateLeftMatch('prev')"
+                  @keydown.esc="leftFindOpen = false"
+                />
+                <span v-if="leftFindQuery" class="find-count">
+                  {{ leftMatchCount > 0 ? `${leftFindIndex} of ${leftMatchCount}` : '0 results' }}
+                </span>
+              </div>
+              <button
+                type="button"
+                class="find-opt-btn"
+                :class="{ active: leftFindCase }"
+                title="Match Case"
+                @click="leftFindCase = !leftFindCase"
+              >
+                Aa
+              </button>
+              <button
+                type="button"
+                class="find-nav-btn"
+                title="Previous Match (Shift+Enter)"
+                :disabled="leftMatchCount === 0"
+                @click="navigateLeftMatch('prev')"
+              >
+                <ChevronUp :size="13" />
+              </button>
+              <button
+                type="button"
+                class="find-nav-btn"
+                title="Next Match (Enter)"
+                :disabled="leftMatchCount === 0"
+                @click="navigateLeftMatch('next')"
+              >
+                <ChevronDown :size="13" />
+              </button>
+              <button
+                type="button"
+                class="find-close-btn"
+                title="Close (Esc)"
+                @click="leftFindOpen = false"
+              >
+                ✕
+              </button>
             </div>
 
             <div
@@ -843,17 +1253,33 @@ onBeforeUnmount(() => {
                   </span>
                 </div>
 
-                <!-- Code Content with inline diff highlighting -->
+                <!-- Code Content with inline diff & search highlighting -->
                 <div class="code-line">
                   <template v-if="row.inlineDiffs && row.inlineDiffs.length">
                     <span
                       v-for="(chunk, cIdx) in row.inlineDiffs"
                       :key="cIdx"
                       :class="`inline-${chunk.type}`"
-                    >{{ chunk.text }}</span>
+                    >
+                      <template v-if="leftFindQuery">
+                        <span
+                          v-for="(part, pIdx) in getSearchHighlightChunks(chunk.text, leftFindQuery, leftFindCase)"
+                          :key="pIdx"
+                          :class="{ 'find-match': part.isMatch }"
+                        >{{ part.text }}</span>
+                      </template>
+                      <template v-else>{{ chunk.text }}</template>
+                    </span>
                   </template>
                   <template v-else>
-                    {{ row.content }}
+                    <template v-if="leftFindQuery">
+                      <span
+                        v-for="(part, pIdx) in getSearchHighlightChunks(row.content, leftFindQuery, leftFindCase)"
+                        :key="pIdx"
+                        :class="{ 'find-match': part.isMatch }"
+                      >{{ part.text }}</span>
+                    </template>
+                    <template v-else>{{ row.content }}</template>
                   </template>
                 </div>
               </div>
@@ -873,6 +1299,71 @@ onBeforeUnmount(() => {
               <div class="header-indicator modified-dot"></div>
               <span class="column-title">Modified (Comparison)</span>
               <span class="line-badge">{{ diffResult?.rightLines.length || 0 }} rows</span>
+              <button
+                type="button"
+                class="col-find-toggle-btn"
+                :class="{ active: rightFindOpen }"
+                title="Find in Modified (Ctrl+F)"
+                @click="toggleRightFind"
+              >
+                <Search :size="13" />
+              </button>
+            </div>
+
+            <!-- Right In-Editor Find Bar -->
+            <div v-if="rightFindOpen" class="column-find-bar">
+              <div class="find-input-wrap">
+                <Search :size="12" class="find-icon" />
+                <input
+                  ref="rightFindInputRef"
+                  v-model="rightFindQuery"
+                  type="text"
+                  class="find-input"
+                  placeholder="Find in Modified..."
+                  spellcheck="false"
+                  @keydown.enter.exact="navigateRightMatch('next')"
+                  @keydown.shift.enter="navigateRightMatch('prev')"
+                  @keydown.esc="rightFindOpen = false"
+                />
+                <span v-if="rightFindQuery" class="find-count">
+                  {{ rightMatchCount > 0 ? `${rightFindIndex} of ${rightMatchCount}` : '0 results' }}
+                </span>
+              </div>
+              <button
+                type="button"
+                class="find-opt-btn"
+                :class="{ active: rightFindCase }"
+                title="Match Case"
+                @click="rightFindCase = !rightFindCase"
+              >
+                Aa
+              </button>
+              <button
+                type="button"
+                class="find-nav-btn"
+                title="Previous Match (Shift+Enter)"
+                :disabled="rightMatchCount === 0"
+                @click="navigateRightMatch('prev')"
+              >
+                <ChevronUp :size="13" />
+              </button>
+              <button
+                type="button"
+                class="find-nav-btn"
+                title="Next Match (Enter)"
+                :disabled="rightMatchCount === 0"
+                @click="navigateRightMatch('next')"
+              >
+                <ChevronDown :size="13" />
+              </button>
+              <button
+                type="button"
+                class="find-close-btn"
+                title="Close (Esc)"
+                @click="rightFindOpen = false"
+              >
+                ✕
+              </button>
             </div>
 
             <div
@@ -900,17 +1391,33 @@ onBeforeUnmount(() => {
                   </span>
                 </div>
 
-                <!-- Code Content with inline diff highlighting -->
+                <!-- Code Content with inline diff & search highlighting -->
                 <div class="code-line">
                   <template v-if="row.inlineDiffs && row.inlineDiffs.length">
                     <span
                       v-for="(chunk, cIdx) in row.inlineDiffs"
                       :key="cIdx"
                       :class="`inline-${chunk.type}`"
-                    >{{ chunk.text }}</span>
+                    >
+                      <template v-if="rightFindQuery">
+                        <span
+                          v-for="(part, pIdx) in getSearchHighlightChunks(chunk.text, rightFindQuery, rightFindCase)"
+                          :key="pIdx"
+                          :class="{ 'find-match': part.isMatch }"
+                        >{{ part.text }}</span>
+                      </template>
+                      <template v-else>{{ chunk.text }}</template>
+                    </span>
                   </template>
                   <template v-else>
-                    {{ row.content }}
+                    <template v-if="rightFindQuery">
+                      <span
+                        v-for="(part, pIdx) in getSearchHighlightChunks(row.content, rightFindQuery, rightFindCase)"
+                        :key="pIdx"
+                        :class="{ 'find-match': part.isMatch }"
+                      >{{ part.text }}</span>
+                    </template>
+                    <template v-else>{{ row.content }}</template>
                   </template>
                 </div>
               </div>
@@ -940,6 +1447,71 @@ onBeforeUnmount(() => {
           <div class="column-header">
             <span class="column-title">Unified Stream View</span>
             <span class="line-badge">{{ diffResult?.unifiedLines.length || 0 }} stream lines</span>
+            <button
+              type="button"
+              class="col-find-toggle-btn"
+              :class="{ active: unifiedFindOpen }"
+              title="Find in Unified Diff (Ctrl+F)"
+              @click="toggleUnifiedFind"
+            >
+              <Search :size="13" />
+            </button>
+          </div>
+
+          <!-- Unified In-Editor Find Bar -->
+          <div v-if="unifiedFindOpen" class="column-find-bar">
+            <div class="find-input-wrap">
+              <Search :size="12" class="find-icon" />
+              <input
+                ref="unifiedFindInputRef"
+                v-model="unifiedFindQuery"
+                type="text"
+                class="find-input"
+                placeholder="Find in Unified Stream..."
+                spellcheck="false"
+                @keydown.enter.exact="navigateUnifiedMatch('next')"
+                @keydown.shift.enter="navigateUnifiedMatch('prev')"
+                @keydown.esc="unifiedFindOpen = false"
+              />
+              <span v-if="unifiedFindQuery" class="find-count">
+                {{ unifiedMatchCount > 0 ? `${unifiedFindIndex} of ${unifiedMatchCount}` : '0 results' }}
+              </span>
+            </div>
+            <button
+              type="button"
+              class="find-opt-btn"
+              :class="{ active: unifiedFindCase }"
+              title="Match Case"
+              @click="unifiedFindCase = !unifiedFindCase"
+            >
+              Aa
+            </button>
+            <button
+              type="button"
+              class="find-nav-btn"
+              title="Previous Match (Shift+Enter)"
+              :disabled="unifiedMatchCount === 0"
+              @click="navigateUnifiedMatch('prev')"
+            >
+              <ChevronUp :size="13" />
+            </button>
+            <button
+              type="button"
+              class="find-nav-btn"
+              title="Next Match (Enter)"
+              :disabled="unifiedMatchCount === 0"
+              @click="navigateUnifiedMatch('next')"
+            >
+              <ChevronDown :size="13" />
+            </button>
+            <button
+              type="button"
+              class="find-close-btn"
+              title="Close (Esc)"
+              @click="unifiedFindOpen = false"
+            >
+              ✕
+            </button>
           </div>
 
           <div class="unified-scroll-area">
@@ -969,10 +1541,26 @@ onBeforeUnmount(() => {
                     v-for="(chunk, cIdx) in row.inlineDiffs"
                     :key="cIdx"
                     :class="`inline-${chunk.type}`"
-                  >{{ chunk.text }}</span>
+                  >
+                    <template v-if="unifiedFindQuery">
+                      <span
+                        v-for="(part, pIdx) in getSearchHighlightChunks(chunk.text, unifiedFindQuery, unifiedFindCase)"
+                        :key="pIdx"
+                        :class="{ 'find-match': part.isMatch }"
+                      >{{ part.text }}</span>
+                    </template>
+                    <template v-else>{{ chunk.text }}</template>
+                  </span>
                 </template>
                 <template v-else>
-                  {{ row.content }}
+                  <template v-if="unifiedFindQuery">
+                    <span
+                      v-for="(part, pIdx) in getSearchHighlightChunks(row.content, unifiedFindQuery, unifiedFindCase)"
+                      :key="pIdx"
+                      :class="{ 'find-match': part.isMatch }"
+                    >{{ part.text }}</span>
+                  </template>
+                  <template v-else>{{ row.content }}</template>
                 </template>
               </div>
             </div>
@@ -1000,108 +1588,13 @@ onBeforeUnmount(() => {
         :class="{ 'is-maximized': isPanelMaximized }"
         :style="{ height: isPanelMaximized ? undefined : `${structuralPanelHeight}px` }"
       >
-        <!-- Header -->
-        <div class="structural-header">
+        <!-- Consolidated Unified Header (Search, Filters, Presets, Controls) -->
+        <div class="structural-header unified-header">
           <div class="header-left">
-            <Layers :size="15" class="primary-icon" />
-            <span class="sec-title">Structural JSON Breakdown</span>
-            <span class="count-tag">{{ diffResult.structuralDiff.length }} Changes</span>
-
-            <!-- Quick Height Presets -->
-            <div class="panel-presets-group">
-              <button
-                type="button"
-                class="preset-btn"
-                :class="{ active: !isPanelMaximized && structuralPanelHeight <= 180 }"
-                title="Compact Height (160px)"
-                @click="setPanelPreset(160)"
-              >
-                160px
-              </button>
-              <button
-                type="button"
-                class="preset-btn"
-                :class="{ active: !isPanelMaximized && structuralPanelHeight > 180 && structuralPanelHeight <= 300 }"
-                title="Standard Height (260px)"
-                @click="setPanelPreset(260)"
-              >
-                260px
-              </button>
-              <button
-                type="button"
-                class="preset-btn"
-                :class="{ active: !isPanelMaximized && structuralPanelHeight > 300 }"
-                title="Expanded Height (420px)"
-                @click="setPanelPreset(420)"
-              >
-                420px
-              </button>
-            </div>
-          </div>
-
-          <div class="header-right">
-            <!-- Sizing buttons: Increase & Decrease -->
-            <div class="panel-action-group">
-              <button
-                type="button"
-                class="panel-icon-btn"
-                title="Decrease Height (-80px)"
-                @click="decreasePanelHeight()"
-              >
-                <Minus :size="13" />
-              </button>
-              <button
-                type="button"
-                class="panel-icon-btn"
-                title="Increase Height (+80px)"
-                @click="increasePanelHeight()"
-              >
-                <Plus :size="13" />
-              </button>
-              <button
-                type="button"
-                class="panel-icon-btn"
-                :class="{ active: isPanelMaximized }"
-                :title="isPanelMaximized ? 'Restore Down' : 'Maximize Breakdown View'"
-                @click="togglePanelMaximize"
-              >
-                <component :is="isPanelMaximized ? Minimize2 : Maximize2" :size="13" />
-              </button>
-            </div>
-
-            <!-- Close Panel -->
-            <button
-              type="button"
-              class="close-mini-btn"
-              title="Close panel"
-              @click="showStructural = false"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-
-        <!-- Filter & Search Toolbar -->
-        <div class="structural-subbar">
-          <div class="subbar-left">
-            <!-- Search input -->
-            <div class="search-box">
-              <Search :size="13" class="search-icon" />
-              <input
-                v-model="filterQuery"
-                type="text"
-                class="search-input"
-                placeholder="Filter by path or change..."
-                spellcheck="false"
-              />
-              <button
-                v-if="filterQuery"
-                type="button"
-                class="clear-search-btn"
-                @click="filterQuery = ''"
-              >
-                ✕
-              </button>
+            <div class="title-wrap">
+              <Layers :size="14" class="primary-icon" />
+              <span class="sec-title">Structural Breakdown</span>
+              <span class="count-tag">{{ diffResult.structuralDiff.length }}</span>
             </div>
 
             <!-- Filter Type Chips -->
@@ -1121,7 +1614,7 @@ onBeforeUnmount(() => {
                 :class="{ active: filterType === 'added' }"
                 @click="filterType = 'added'"
               >
-                +Added ({{ structuralCounts.added }})
+                +{{ structuralCounts.added }}
               </button>
               <button
                 v-if="structuralCounts.removed > 0"
@@ -1130,7 +1623,7 @@ onBeforeUnmount(() => {
                 :class="{ active: filterType === 'removed' }"
                 @click="filterType = 'removed'"
               >
-                -Removed ({{ structuralCounts.removed }})
+                -{{ structuralCounts.removed }}
               </button>
               <button
                 v-if="structuralCounts.modified > 0"
@@ -1139,7 +1632,7 @@ onBeforeUnmount(() => {
                 :class="{ active: filterType === 'modified' }"
                 @click="filterType = 'modified'"
               >
-                ~Modified ({{ structuralCounts.modified }})
+                ~{{ structuralCounts.modified }}
               </button>
               <button
                 v-if="structuralCounts.type_changed > 0"
@@ -1148,31 +1641,112 @@ onBeforeUnmount(() => {
                 :class="{ active: filterType === 'type_changed' }"
                 @click="filterType = 'type_changed'"
               >
-                !Type ({{ structuralCounts.type_changed }})
+                !{{ structuralCounts.type_changed }}
               </button>
             </div>
           </div>
 
-          <div class="subbar-right">
-            <!-- Export Options -->
-            <button
-              type="button"
-              class="subbar-btn"
-              title="Copy as Markdown Table"
-              @click="copyStructuralAsMarkdown"
-            >
-              <Copy :size="12" />
-              <span>Copy MD</span>
-            </button>
-            <button
-              type="button"
-              class="subbar-btn"
-              title="Copy as CSV"
-              @click="copyStructuralAsCsv"
-            >
-              <FileSpreadsheet :size="12" />
-              <span>Copy CSV</span>
-            </button>
+          <div class="header-right">
+            <!-- Search input -->
+            <div class="search-box">
+              <Search :size="12" class="search-icon" />
+              <input
+                v-model="filterQuery"
+                type="text"
+                class="search-input"
+                placeholder="Filter path / changes..."
+                spellcheck="false"
+              />
+              <button
+                v-if="filterQuery"
+                type="button"
+                class="clear-search-btn"
+                aria-label="Clear filter"
+                @click="filterQuery = ''"
+              >
+                ✕
+              </button>
+            </div>
+
+            <!-- Export Buttons -->
+            <M3Tooltip text="Copy as Markdown Table" placement="top">
+              <button
+                type="button"
+                class="panel-icon-btn"
+                aria-label="Copy Markdown"
+                @click="copyStructuralAsMarkdown"
+              >
+                <Copy :size="12" />
+              </button>
+            </M3Tooltip>
+            <M3Tooltip text="Copy as CSV" placement="top">
+              <button
+                type="button"
+                class="panel-icon-btn"
+                aria-label="Copy CSV"
+                @click="copyStructuralAsCsv"
+              >
+                <FileSpreadsheet :size="12" />
+              </button>
+            </M3Tooltip>
+
+            <div class="header-divider"></div>
+
+            <!-- Quick Height Presets -->
+            <div class="panel-presets-group">
+              <button
+                type="button"
+                class="preset-btn"
+                :class="{ active: !isPanelMaximized && structuralPanelHeight <= 180 }"
+                title="Compact (160px)"
+                @click="setPanelPreset(160)"
+              >
+                160
+              </button>
+              <button
+                type="button"
+                class="preset-btn"
+                :class="{ active: !isPanelMaximized && structuralPanelHeight > 180 && structuralPanelHeight <= 300 }"
+                title="Standard (260px)"
+                @click="setPanelPreset(260)"
+              >
+                260
+              </button>
+              <button
+                type="button"
+                class="preset-btn"
+                :class="{ active: !isPanelMaximized && structuralPanelHeight > 300 }"
+                title="Expanded (420px)"
+                @click="setPanelPreset(420)"
+              >
+                420
+              </button>
+            </div>
+
+            <!-- Sizing buttons: Maximize & Close -->
+            <div class="panel-action-group">
+              <M3Tooltip :text="isPanelMaximized ? 'Restore Down' : 'Maximize Breakdown'" placement="top">
+                <button
+                  type="button"
+                  class="panel-icon-btn"
+                  :class="{ active: isPanelMaximized }"
+                  aria-label="Toggle Maximize"
+                  @click="togglePanelMaximize"
+                >
+                  <component :is="isPanelMaximized ? Minimize2 : Maximize2" :size="12" />
+                </button>
+              </M3Tooltip>
+              <M3Tooltip text="Close Panel" placement="top">
+                <button
+                  type="button"
+                  class="close-mini-btn"
+                  aria-label="Close panel"
+                  @click="showStructural = false"
+                >
+                  ✕
+                </button>
+              </M3Tooltip>
+            </div>
           </div>
         </div>
 
@@ -1302,12 +1876,12 @@ onBeforeUnmount(() => {
   flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  min-height: 36px;
+  gap: 0.375rem;
+  min-height: 32px;
   background: var(--md-sys-color-surface-container);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-small);
-  padding: 0.25rem 0.625rem;
+  border-radius: 8px;
+  padding: 0.2rem 0.5rem;
   overflow-x: auto;
 }
 
@@ -1316,94 +1890,176 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 0.5rem;
+  gap: 0.375rem;
   flex-shrink: 0;
 }
 
-.control-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.control-label {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--md-sys-color-on-surface-variant);
+.toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--md-sys-color-outline-variant);
+  margin: 0 2px;
+  opacity: 0.6;
 }
 
 .segment-group {
   display: inline-flex;
   background: var(--md-sys-color-surface-container-high);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 2px;
   gap: 2px;
 }
 
-.segment-btn {
+.icon-toggle-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
   border: none;
   background: transparent;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 11.5px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.icon-toggle-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+}
+
+.icon-toggle-btn.active {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.segment-text-btn {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 11px;
   font-weight: 500;
-  padding: 4px 9px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.segment-text-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+}
+
+.segment-text-btn.active {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  font-weight: 600;
+}
+
+.samples-group,
+.toggles-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pill-sample-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 7px;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 
-.segment-btn:hover {
+.pill-sample-btn:hover {
   background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
+  border-color: var(--md-sys-color-outline);
 }
 
-.segment-btn.active {
-  background: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.mode-toggle-btn {
+.mode-badge-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   background: var(--md-sys-color-surface-container-high);
   border: 1px solid var(--md-sys-color-outline-variant);
   color: var(--md-sys-color-on-surface);
-  font-size: 11.5px;
-  font-weight: 500;
-  padding: 4px 10px;
-  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 
-.mode-toggle-btn.active {
+.mode-badge-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.mode-badge-btn.active {
   background: var(--md-sys-color-primary-container);
   color: var(--md-sys-color-on-primary-container);
   border-color: var(--md-sys-color-primary);
 }
 
+.icon-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.icon-action-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  border-color: var(--md-sys-color-outline);
+}
+
+.icon-action-btn.active {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
+}
+
+.btn-danger-hover:hover {
+  color: var(--md-sys-color-error);
+}
+
 .diff-navigator {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   background: var(--md-sys-color-surface-container-high);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 8px;
-  padding: 2px 6px;
+  border-radius: 6px;
+  padding: 1px 4px;
 }
 
 .diff-counter {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--md-sys-color-on-surface-variant);
+  padding: 0 4px;
   white-space: nowrap;
 }
 
@@ -1411,22 +2067,18 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   color: var(--md-sys-color-on-surface);
-  border-radius: 4px;
+  border-radius: 3px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.12s ease;
 }
 
 .nav-arrow-btn:hover {
   background: var(--md-sys-color-surface-container-highest);
-}
-
-.fullscreen-toggle-btn {
-  font-weight: 600;
 }
 
 /* Stats Bar */
@@ -1435,11 +2087,11 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
   background: var(--md-sys-color-surface-container-low);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 8px;
-  padding: 6px 12px;
+  border-radius: 6px;
+  padding: 3px 8px;
 }
 
 .stats-left,
@@ -1447,17 +2099,17 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
+  gap: 4px;
+  font-size: 11px;
   font-weight: 700;
-  padding: 3px 9px;
-  border-radius: 6px;
+  padding: 2px 7px;
+  border-radius: 4px;
 }
 
 .badge-identical {
@@ -1475,11 +2127,11 @@ onBeforeUnmount(() => {
 .stat-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
+  gap: 3px;
+  font-size: 10.5px;
   font-weight: 600;
-  padding: 2px 7px;
-  border-radius: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 
 .stat-symbol {
@@ -1505,22 +2157,22 @@ onBeforeUnmount(() => {
 }
 
 .stat-meta {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--md-sys-color-on-surface-variant);
-  margin-left: 4px;
+  margin-left: 2px;
 }
 
 .structural-toggle-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 4px;
   border: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface-container);
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 500;
-  padding: 3px 9px;
-  border-radius: 6px;
+  padding: 2px 7px;
+  border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -1532,10 +2184,10 @@ onBeforeUnmount(() => {
 }
 
 .exec-time-pill {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--md-sys-color-on-surface-variant);
   background: var(--md-sys-color-surface-container-high);
-  padding: 2px 7px;
+  padding: 1px 5px;
   border-radius: 4px;
 }
 
@@ -1644,6 +2296,174 @@ onBeforeUnmount(() => {
   background: var(--md-sys-color-surface-container-high);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   font-size: 12px;
+  font-weight: 600;
+}
+
+.col-find-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: 6px;
+}
+
+.col-find-toggle-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+}
+
+.col-find-toggle-btn.active {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
+}
+
+/* In-Editor Find Bar */
+.column-find-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--md-sys-color-surface-container);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  flex-shrink: 0;
+  animation: slide-down 0.15s ease-out;
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.find-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  background: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 6px;
+  padding: 0 6px;
+  min-width: 0;
+}
+
+.find-icon {
+  color: var(--md-sys-color-on-surface-variant);
+  flex-shrink: 0;
+  margin-right: 4px;
+}
+
+.find-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font-size: 11.5px;
+  font-family: inherit;
+  padding: 3px 0;
+  outline: none;
+  min-width: 60px;
+}
+
+.find-count {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface-variant);
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.find-opt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 5px;
+  height: 24px;
+  min-width: 24px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.find-opt-btn:hover {
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+}
+
+.find-opt-btn.active {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
+}
+
+.find-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.find-nav-btn:hover:not(:disabled) {
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.find-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.find-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.12s ease;
+}
+
+.find-close-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-error);
+}
+
+/* Search match highlighting */
+.find-match {
+  background-color: rgba(250, 204, 21, 0.45);
+  color: #fef08a;
+  border-radius: 2px;
+  padding: 0 1px;
+  box-shadow: 0 0 0 1px rgba(234, 179, 8, 0.6);
   font-weight: 600;
 }
 
@@ -1913,7 +2733,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   background: var(--md-sys-color-surface-container);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
   min-height: 120px;
@@ -1928,59 +2748,75 @@ onBeforeUnmount(() => {
   height: 100% !important;
   max-height: 100% !important;
   z-index: 40;
-  border-radius: 10px;
+  border-radius: 8px;
 }
 
-.structural-header {
+.structural-header.unified-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
+  padding: 4px 8px;
   background: var(--md-sys-color-surface-container-high);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
   flex-shrink: 0;
-  gap: 8px;
+  gap: 6px;
+  overflow-x: auto;
 }
 
 .header-left,
 .header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+}
+
+.title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: 4px;
 }
 
 .sec-title {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .count-tag {
-  font-size: 11px;
+  font-size: 10px;
   background: var(--md-sys-color-primary-container);
   color: var(--md-sys-color-on-primary-container);
-  padding: 2px 7px;
-  border-radius: 10px;
-  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.header-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--md-sys-color-outline-variant);
+  margin: 0 2px;
+  opacity: 0.6;
 }
 
 .panel-presets-group {
   display: inline-flex;
   background: var(--md-sys-color-surface-container-lowest);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 6px;
-  padding: 2px;
-  gap: 2px;
-  margin-left: 6px;
+  border-radius: 4px;
+  padding: 1px;
+  gap: 1px;
 }
 
 .preset-btn {
   border: none;
   background: transparent;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 500;
-  padding: 2px 6px;
-  border-radius: 4px;
+  padding: 1px 5px;
+  border-radius: 3px;
   cursor: pointer;
   transition: all 0.12s ease;
 }
@@ -2000,20 +2836,16 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  background: var(--md-sys-color-surface-container-lowest);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 6px;
-  padding: 2px;
 }
 
 .panel-icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
+  width: 22px;
   height: 22px;
-  border: none;
-  background: transparent;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-lowest);
   color: var(--md-sys-color-on-surface-variant);
   border-radius: 4px;
   cursor: pointer;
@@ -2021,7 +2853,7 @@ onBeforeUnmount(() => {
 }
 
 .panel-icon-btn:hover {
-  background: var(--md-sys-color-surface-container-high);
+  background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
 }
 
@@ -2035,9 +2867,9 @@ onBeforeUnmount(() => {
   background: transparent;
   color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
-  padding: 3px 7px;
+  padding: 2px 6px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2048,35 +2880,15 @@ onBeforeUnmount(() => {
   color: var(--md-sys-color-error);
 }
 
-/* Structural Subbar (Filter & Export) */
-.structural-subbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 5px 12px;
-  background: var(--md-sys-color-surface-container-lowest);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  flex-shrink: 0;
-  gap: 8px;
-  overflow-x: auto;
-}
-
-.subbar-left,
-.subbar-right {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .search-box {
   position: relative;
   display: flex;
   align-items: center;
-  background: var(--md-sys-color-surface-container-high);
+  background: var(--md-sys-color-surface-container-lowest);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 6px;
-  padding: 0 6px;
-  width: 180px;
+  border-radius: 4px;
+  padding: 0 5px;
+  width: 140px;
 }
 
 .search-icon {

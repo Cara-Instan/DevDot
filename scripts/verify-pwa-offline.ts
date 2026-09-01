@@ -124,16 +124,16 @@ async function runPwaAndOfflineVerification() {
   const cicdWorkflow = fs.readFileSync(cicdWorkflowPath, 'utf-8')
 
   assert(cicdWorkflow.includes('verify-and-test:'), 'Workflow contains verify-and-test job')
-  assert(cicdWorkflow.includes('build-pwa-web:'), 'Workflow contains build-pwa-web job')
-  assert(cicdWorkflow.includes('build-tauri-desktop:'), 'Workflow contains build-tauri-desktop job')
-  assert(cicdWorkflow.includes('windows-latest') && cicdWorkflow.includes('macos-latest') && cicdWorkflow.includes('ubuntu-22.04'), 'Workflow defines cross-platform matrix (Windows, macOS, Linux)')
-  assert(cicdWorkflow.includes('tauri-apps/tauri-action@v0'), 'Workflow uses official tauri-apps/tauri-action for release packaging')
+  assert(cicdWorkflow.includes('TypeScript Static Typecheck'), 'Workflow executes TypeScript typecheck')
+  assert(cicdWorkflow.includes('npm run test:json'), 'Workflow executes JSON verification test suite')
+  assert(cicdWorkflow.includes('npm run test:crypto'), 'Workflow executes Crypto verification test suite')
+  assert(cicdWorkflow.includes('npm run test:security'), 'Workflow executes Security audit test suite')
   assert(cicdWorkflow.includes('npm run test:pwa'), 'Workflow executes PWA verification test suite')
 
   const docPath = path.join(rootDir, 'docs', 'CI_CD.md')
   assert(fs.existsSync(docPath), 'docs/CI_CD.md exists')
   const docContent = fs.readFileSync(docPath, 'utf-8')
-  assert(docContent.includes('DevDot CI/CD & Offline Deployment Documentation'), 'docs/CI_CD.md has comprehensive overview')
+  assert(docContent.includes('DevDot CI & Offline Deployment Documentation'), 'docs/CI_CD.md has comprehensive overview')
   assert(docContent.includes('Workbox Cache-First'), 'docs/CI_CD.md details PWA workbox caching strategy')
 
   // -------------------------------------------------------------------------

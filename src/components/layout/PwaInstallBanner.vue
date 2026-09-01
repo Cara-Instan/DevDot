@@ -28,7 +28,7 @@ function handleDontAskAgain() {
     <!-- SW Update Available Notification Banner -->
     <Transition name="slide-up">
       <div v-if="pwaStore.needRefresh" class="pwa-banner update-banner" role="alert">
-        <div class="banner-content">
+        <div class="banner-main">
           <div class="banner-icon-badge update-badge">
             <RefreshCw :size="18" class="spin-icon" />
           </div>
@@ -38,7 +38,7 @@ function handleDontAskAgain() {
           </div>
         </div>
 
-        <div class="banner-actions">
+        <div class="banner-actions update-actions">
           <M3Button variant="filled" @click="handleUpdate">
             <template #icon>
               <RefreshCw :size="14" />
@@ -57,33 +57,14 @@ function handleDontAskAgain() {
         role="region"
         aria-label="Install DevDot App"
       >
-        <div class="banner-content">
+        <div class="banner-main">
           <div class="banner-icon-badge install-badge">
             <img :src="appLogo" alt="DevDot Logo" class="banner-logo-img" />
           </div>
           <div class="banner-text">
             <span class="banner-title">Install DevDot App</span>
-            <span class="banner-desc">Get fast offline desktop/mobile access with no browser chrome.</span>
+            <span class="banner-desc">Get fast offline desktop & mobile access with no browser chrome.</span>
           </div>
-        </div>
-
-        <div class="banner-actions">
-          <M3Button variant="filled" @click="handleInstall">
-            <template #icon>
-              <Download :size="14" />
-            </template>
-            Install Now
-          </M3Button>
-
-          <button
-            type="button"
-            class="secondary-text-btn"
-            title="Never show automatic install banner again"
-            @click="handleDontAskAgain"
-          >
-            Don't ask again
-          </button>
-
           <button
             type="button"
             class="dismiss-btn"
@@ -93,6 +74,24 @@ function handleDontAskAgain() {
           >
             <X :size="16" />
           </button>
+        </div>
+
+        <div class="banner-actions">
+          <button
+            type="button"
+            class="secondary-text-btn"
+            title="Never show automatic install banner again"
+            @click="handleDontAskAgain"
+          >
+            Don't ask again
+          </button>
+
+          <M3Button variant="filled" @click="handleInstall">
+            <template #icon>
+              <Download :size="14" />
+            </template>
+            Install Now
+          </M3Button>
         </div>
       </div>
     </Transition>
@@ -108,23 +107,22 @@ function handleDontAskAgain() {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  max-width: 440px;
-  width: calc(100vw - 2.5rem);
+  width: 380px;
+  max-width: calc(100vw - 2.5rem);
   pointer-events: none;
 }
 
 .pwa-banner {
   pointer-events: auto;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.875rem 1.125rem;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding: 1rem 1.125rem;
   background-color: var(--md-sys-color-surface-container-high);
   border: 1px solid var(--md-sys-color-outline-variant);
   border-radius: var(--md-sys-shape-corner-large);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(16px);
   color: var(--md-sys-color-on-surface);
 }
 
@@ -137,63 +135,76 @@ function handleDontAskAgain() {
   );
 }
 
-.banner-content {
+.banner-main {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  min-width: 0;
+  align-items: flex-start;
+  gap: 0.875rem;
+  width: 100%;
 }
 
 .banner-icon-badge {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  background: var(--md-sys-color-surface-container-highest);
+  border: 1px solid var(--md-sys-color-outline-variant);
 }
 
 .install-badge {
   overflow: hidden;
+  padding: 4px;
 }
 
 .banner-logo-img {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  border-radius: 6px;
 }
 
 .update-badge {
   background-color: var(--md-sys-color-primary-container);
   color: var(--md-sys-color-on-primary-container);
+  border-color: transparent;
 }
 
 .banner-text {
+  flex: 1;
   display: flex;
   flex-direction: column;
+  gap: 0.2rem;
   min-width: 0;
 }
 
 .banner-title {
   font-size: 0.875rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--md-sys-color-on-surface);
-  line-height: 1.2;
+  line-height: 1.3;
 }
 
 .banner-desc {
-  font-size: 0.75rem;
+  font-size: 0.775rem;
   color: var(--md-sys-color-on-surface-variant);
-  line-height: 1.3;
-  margin-top: 0.15rem;
+  line-height: 1.35;
 }
 
 .banner-actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
-  flex-shrink: 0;
+  width: 100%;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--md-sys-color-surface-container-highest, rgba(255, 255, 255, 0.06));
+}
+
+.update-actions {
+  justify-content: flex-end;
 }
 
 .secondary-text-btn {
@@ -202,7 +213,7 @@ function handleDontAskAgain() {
   color: var(--md-sys-color-on-surface-variant);
   font-size: 0.75rem;
   font-weight: 500;
-  padding: 0.35rem 0.55rem;
+  padding: 0.35rem 0.5rem;
   border-radius: var(--md-sys-shape-corner-small, 6px);
   cursor: pointer;
   white-space: nowrap;
@@ -218,13 +229,16 @@ function handleDontAskAgain() {
   background: transparent;
   border: none;
   color: var(--md-sys-color-on-surface-variant);
-  padding: 0.4rem;
-  border-radius: 50%;
+  padding: 0.25rem;
+  border-radius: 6px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-top: -2px;
+  margin-right: -4px;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .dismiss-btn:hover {
@@ -262,17 +276,7 @@ function handleDontAskAgain() {
     right: 0.75rem;
     left: 0.75rem;
     width: auto;
-  }
-
-  .pwa-banner {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .banner-actions {
-    width: 100%;
-    justify-content: space-between;
-    margin-top: 0.25rem;
+    max-width: none;
   }
 }
 </style>

@@ -1,25 +1,22 @@
-# DevDot CI/CD & Offline Deployment Documentation
+# DevDot CI & Offline Deployment Documentation
 
-Dokumen ini menjelaskan arsitektur CI/CD, konfigurasi Progressive Web App (PWA) 100% offline, dan pipeline release otomatis multi-platform (Web SPA, Windows, macOS, Linux) menggunakan **GitHub Actions** dan **Tauri v2**.
+Dokumen ini menjelaskan konfigurasi CI (Continuous Integration) untuk pengujian otomatis, Progressive Web App (PWA) 100% offline, serta prosedur build lokal untuk Web SPA dan Tauri desktop multi-platform.
 
 ---
 
-## 1. Ikhtisar Pipeline CI/CD
+## 1. Ikhtisar Pipeline CI (Testing & Verification)
 
-Workflow otomatis terdefinisi di [`.github/workflows/ci-cd.yml`](../.github/workflows/ci-cd.yml) dan terbagi menjadi 3 job terisolasi:
+Workflow otomatis terdefinisi di [`.github/workflows/ci-cd.yml`](../.github/workflows/ci-cd.yml) dan difokuskan khusus untuk **pengujian dan verifikasi kualitas kode** pada setiap push/pull request ke branch `main`:
 
 ```mermaid
 graph TD
-    A[Push / PR / Tag Push] --> B[Job 1: verify-and-test]
-    B --> C[Job 2: build-pwa-web]
-    B --> D[Job 3: build-tauri-desktop]
-    C --> E[Web PWA Artifact / Static Hosting]
-    D --> F[Windows .msi / .exe]
-    D --> G[macOS .dmg / .app]
-    D --> H[Linux .AppImage / .deb]
+    A[Push / Pull Request to main] --> B[Job: verify-and-test]
+    B --> C[TypeScript Static Typecheck]
+    B --> D[Automated Test Suites Execution]
+    B --> E[Security & Offline Verification]
 ```
 
-### 1.1 Job 1: `verify-and-test`
+### 1.1 Job: `verify-and-test`
 Menjalankan static typechecking dan seluruh rangkaian uji verifikasi modular untuk menjamin tidak ada regresi fungsionalitas:
 1. **TypeScript Typecheck**: `npx vue-tsc -b`
 2. **JSON Suite Tests**: Formatter, Minifier, Repair, Schema/Type Gen (`npm run test:json`)
@@ -31,18 +28,6 @@ Menjalankan static typechecking dan seluruh rangkaian uji verifikasi modular unt
 8. **Security & Ephemeral Scrubbing**: Zero network calls, clipboard purge (`npm run test:security`)
 9. **Desktop Native Integrations**: Tauri dialog, FS, global shortcuts (`npm run test:native`)
 10. **PWA & Offline Service Worker**: Manifest, SW cache-first config (`npm run test:pwa`)
-
-### 1.2 Job 2: `build-pwa-web`
-- Menjalankan `npm run build` untuk memproduksi static web distribution di folder `dist/`.
-- Memvalidasi keberadaan Service Worker (`dist/sw.js`) dan Manifest (`dist/manifest.webmanifest`).
-- Mengunggah artifact `devdot-web-pwa` yang siap di-deploy ke GitHub Pages, Vercel, Cloudflare Pages, atau server static offline.
-
-### 1.3 Job 3: `build-tauri-desktop` (Matrix Build)
-- Melakukan build native cross-platform untuk target:
-  - **Windows (x64)**: `x86_64-pc-windows-msvc` (memproduksi installer `.msi` dan `.exe`)
-  - **macOS (Universal)**: `universal-apple-darwin` (memproduksi `.dmg` dan bundle `.app`)
-  - **Linux (x64)**: `x86_64-unknown-linux-gnu` (memproduksi `.AppImage` dan `.deb`)
-- Menggunakan `tauri-apps/tauri-action@v0` untuk otomatis membuat GitHub Release draft jika ada push tag `v*.*.*`.
 
 ---
 
@@ -80,36 +65,28 @@ VitePWA({
 
 ---
 
-## 3. Konfigurasi GitHub Repository Secrets
+## 3. Cara Build & Release Lokal Mandiri
 
-Untuk mengaktifkan automated signing & release pada Tauri desktop builds, tambahkan secrets berikut di GitHub Repository Settings (`Settings > Secrets and variables > Actions`):
+Build produksi dilakukan secara mandiri di mesin lokal:
 
-| Secret Name | Deskripsi | Wajib / Opsional |
-|---|---|---|
-| `GITHUB_TOKEN` | Otomatis disediakan oleh GitHub Actions untuk membuat release draft | Otomatis |
-| `TAURI_SIGNING_PRIVATE_KEY` | Private key untuk auto-updater code signing Tauri v2 | Opsional (jika updater aktif) |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Password untuk private key code signing | Opsional |
-
----
-
-## 4. Cara Menjalankan Release Manual
-
-### 4.1 Memicu Build Release via Git Tag
-1. Pastikan seluruh tests lokal berhasil:
-   ```bash
-   npm run build
-   ```
-2. Buat tag release baru:
-   ```bash
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
-3. GitHub Actions akan otomatis memicu workflow `ci-cd.yml` dan menghasilkan Release Draft beserta installer installer biner untuk seluruh OS di tab GitHub Releases.
-
-### 4.2 Build & Preview PWA Lokal
-Untuk memverifikasi Service Worker dan PWA secara lokal:
+### 3.1 Build & Preview PWA Web (SPA)
+Untuk memproduksi dan memverifikasi bundle web PWA secara lokal:
 ```bash
+# Build static distribution
 npm run build
+
+# Preview static server lokal
 npm run preview
 ```
 Buka browser pada `http://localhost:4173/`, buka DevTools -> Application -> Service Workers & Manifest untuk memverifikasi status registered dan cache-first storage.
+
+### 3.2 Build Aplikasi Desktop (Tauri)
+Untuk memproduksi biner native executable / installer desktop:
+```bash
+# Development mode dengan hot-reload
+npm run tauri dev
+
+# Production standalone build (installer .msi/.exe di Windows, .dmg di macOS, .AppImage/.deb di Linux)
+npm run tauri build
+```
+Hasil installer biner akan tersedia di direktori `src-tauri/target/release/bundle/`.
