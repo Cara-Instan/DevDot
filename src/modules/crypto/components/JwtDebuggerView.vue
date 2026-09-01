@@ -480,18 +480,49 @@ watch(rawToken, (newVal) => {
   }
 })
 
+const props = defineProps<{
+  tabId?: string
+}>()
+
+const currentTabId = computed(() => props.tabId || 'jwt-debugger')
+
 watch([secretKey, isBase64Secret], () => {
   performVerification()
 })
 
+let isHydrating = false
+
 // Snapshot sync
 watch([rawToken, secretKey, isBase64Secret], () => {
-  snapshotStore.setToolState('jwt-debugger', {
+  if (isHydrating) return
+  snapshotStore.setTabState(currentTabId.value, 'jwt-debugger', {
     rawToken: rawToken.value,
     secretKey: secretKey.value,
     isBase64Secret: isBase64Secret.value
   })
 })
+
+// Hydrate from snapshot store
+watch(
+  () => snapshotStore.toolStates[currentTabId.value],
+  async (newState) => {
+    if (newState && !isHydrating) {
+      isHydrating = true
+      if (newState.rawToken !== undefined && newState.rawToken !== rawToken.value) {
+        rawToken.value = newState.rawToken
+      }
+      if (newState.secretKey !== undefined && newState.secretKey !== secretKey.value) {
+        secretKey.value = newState.secretKey
+      }
+      if (newState.isBase64Secret !== undefined && newState.isBase64Secret !== isBase64Secret.value) {
+        isBase64Secret.value = newState.isBase64Secret
+      }
+      isHydrating = false
+      await processToken(rawToken.value)
+    }
+  },
+  { deep: true }
+)
 
 onMounted(async () => {
   // Live clock ticker every 1 second
@@ -500,7 +531,7 @@ onMounted(async () => {
   }, 1000)
 
   // Restore snapshot or load active sample default
-  const saved = snapshotStore.getToolState('jwt-debugger')
+  const saved = snapshotStore.getTabOrToolState<Record<string, any> | null>(props.tabId, 'jwt-debugger', null)
   if (saved && saved.rawToken) {
     rawToken.value = saved.rawToken
     secretKey.value = saved.secretKey ?? 'your-256-bit-secret'

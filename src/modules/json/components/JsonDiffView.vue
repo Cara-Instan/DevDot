@@ -53,8 +53,14 @@ const SAMPLES = {
   }
 }
 
+const props = defineProps<{
+  tabId?: string
+}>()
+
+const currentTabId = computed(() => props.tabId || 'json-diff')
+
 // Initial state from snapshot store
-const initialSaved = snapshotStore.getToolState('json-diff', {
+const initialSaved = snapshotStore.getTabOrToolState(props.tabId, 'json-diff', {
   leftJson: SAMPLES.apiResponse.left,
   rightJson: SAMPLES.apiResponse.right,
   viewMode: 'side-by-side' as DiffViewMode,
@@ -140,7 +146,7 @@ watch(
     isPanelMaximized
   ],
   () => {
-    snapshotStore.setToolState('json-diff', {
+    snapshotStore.setTabState(currentTabId.value, 'json-diff', {
       leftJson: leftJson.value,
       rightJson: rightJson.value,
       viewMode: viewMode.value,
@@ -159,7 +165,7 @@ watch(
 
 // Hydrate from snapshot store if externally changed
 watch(
-  () => snapshotStore.toolStates['json-diff'],
+  () => snapshotStore.toolStates[currentTabId.value],
   (newState) => {
     if (newState) {
       if (newState.leftJson !== undefined && newState.leftJson !== leftJson.value) leftJson.value = newState.leftJson

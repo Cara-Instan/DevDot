@@ -12,7 +12,12 @@ import { useSnapshotStore } from '@/stores'
 import { transpileData } from '../services/transpiler-service'
 import type { DataFormat, TranspileOptions, TranspileResult } from '../types'
 
+const props = defineProps<{
+  tabId?: string
+}>()
+
 const snapshotStore = useSnapshotStore()
+const currentTabId = computed(() => props.tabId || 'multi-transpiler')
 
 // State
 const sourceFormat = ref<DataFormat>('json')
@@ -215,7 +220,7 @@ watch(
       handleTranspile()
 
       // Save state to snapshot store
-      snapshotStore.setToolState('multi-transpiler', {
+      snapshotStore.setTabState(currentTabId.value, 'multi-transpiler', {
         sourceFormat: sourceFormat.value,
         targetFormat: targetFormat.value,
         inputText: inputText.value,
@@ -234,7 +239,7 @@ watch(
 
 // Hydrate from snapshot on mount and external update
 watch(
-  () => snapshotStore.toolStates['multi-transpiler'],
+  () => snapshotStore.toolStates[currentTabId.value],
   (newState) => {
     if (newState && !isHydrating) {
       isHydrating = true
@@ -256,7 +261,7 @@ watch(
 )
 
 onMounted(() => {
-  const saved = snapshotStore.getToolState('multi-transpiler')
+  const saved = snapshotStore.getTabOrToolState<Record<string, any> | null>(props.tabId, 'multi-transpiler', null)
   if (saved) {
     if (saved.sourceFormat) sourceFormat.value = saved.sourceFormat
     if (saved.targetFormat) targetFormat.value = saved.targetFormat
