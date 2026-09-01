@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import {
   ShieldCheck,
   Upload
@@ -23,72 +23,47 @@ import {
   PiiRedactorView
 } from '@/modules'
 import { useNativeIntegration } from '@/composables'
-import { useNavigationStore } from '@/stores'
+import { useTabStore } from '@/stores'
 
-const navStore = useNavigationStore()
+const tabStore = useTabStore()
 const { isDraggingNative } = useNativeIntegration()
 const isDialogOpen = ref(false)
+
+const toolComponentMap: Record<string, any> = {
+  'system-overview': OverviewView,
+  'json-format': JsonFormatterView,
+  'json-schema': JsonSchemaView,
+  'json-diff': JsonDiffView,
+  'encoders-decoders': EncoderDecoderView,
+  'hash-generator': HashGeneratorView,
+  'jwt-debugger': JwtDebuggerView,
+  'multi-transpiler': MultiTranspilerView,
+  'curl-converter': CurlConverterView,
+  'pii-redactor': PiiRedactorView
+}
+
+const activeToolComponent = computed(() => {
+  return toolComponentMap[tabStore.activeToolId] || OverviewView
+})
+
+const activeComponentKey = computed(() => {
+  return tabStore.activeToolId === 'system-overview' ? 'tab-system-overview' : tabStore.activeTabId
+})
 </script>
 
 <template>
   <AppLayout>
     <!-- Main View Content -->
     <div class="app-main-container">
-      <!-- SYSTEM OVERVIEW & WORKSPACE HUB (HERO & CATALOG) -->
-      <template v-if="navStore.activeToolId === 'system-overview'">
-        <OverviewView />
-      </template>
-
-      <!-- SPECIFIC TOOL WORKSPACES -->
-      <template v-else>
-        <!-- Tool View Module -->
-        <div class="tool-view-body">
-          <!-- JSON FORMATTER & MINIFIER -->
-          <template v-if="navStore.activeToolId === 'json-format'">
-            <JsonFormatterView />
-          </template>
-
-          <!-- JSON SCHEMA & TYPE GENERATOR -->
-          <template v-else-if="navStore.activeToolId === 'json-schema'">
-            <JsonSchemaView />
-          </template>
-
-          <!-- JSON VISUAL DIFF CHECKER -->
-          <template v-else-if="navStore.activeToolId === 'json-diff'">
-            <JsonDiffView />
-          </template>
-
-          <!-- ENCODERS & DECODERS (BASE64, URL, HEX, HTML) -->
-          <template v-else-if="navStore.activeToolId === 'encoders-decoders'">
-            <EncoderDecoderView />
-          </template>
-
-          <!-- HASH & ID GENERATOR (MD5, SHA1, SHA256, SHA512, UUID, ULID, NANOID) -->
-          <template v-else-if="navStore.activeToolId === 'hash-generator'">
-            <HashGeneratorView />
-          </template>
-
-          <!-- OFFLINE JWT DEBUGGER & INSPECTOR -->
-          <template v-else-if="navStore.activeToolId === 'jwt-debugger'">
-            <JwtDebuggerView />
-          </template>
-
-          <!-- MULTI-FORMAT DATA TRANSPILER (JSON, YAML, TOML, CSV) -->
-          <template v-else-if="navStore.activeToolId === 'multi-transpiler'">
-            <MultiTranspilerView />
-          </template>
-
-          <!-- cURL TO CODE CONVERTER (FETCH, AXIOS, PYTHON, GO) -->
-          <template v-else-if="navStore.activeToolId === 'curl-converter'">
-            <CurlConverterView />
-          </template>
-
-          <!-- PII LOG REDACTOR & SANITIZER -->
-          <template v-else-if="navStore.activeToolId === 'pii-redactor'">
-            <PiiRedactorView />
-          </template>
-        </div>
-      </template>
+      <div class="tool-view-body">
+        <KeepAlive :max="15">
+          <component
+            :is="activeToolComponent"
+            :key="activeComponentKey"
+            :tab-id="activeComponentKey"
+          />
+        </KeepAlive>
+      </div>
     </div>
 
     <!-- M3 Dialog Component -->

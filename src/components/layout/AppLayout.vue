@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import AppTopBar from './AppTopBar.vue'
+import AppTabBar from './AppTabBar.vue'
 import AppNavigationDrawer from './AppNavigationDrawer.vue'
 import AppBottomNav from './AppBottomNav.vue'
 import CommandPalette from './CommandPalette.vue'
@@ -10,11 +11,11 @@ import SnapshotDialog from './SnapshotDialog.vue'
 import SettingsDialog from './SettingsDialog.vue'
 import PwaInstallBanner from './PwaInstallBanner.vue'
 import { usePwaStore } from '@/stores/pwa'
-import { useNavigationStore } from '@/stores/navigation'
+import { useTabStore } from '@/stores/tabs'
 import { useSmoothScroll } from '@/composables/useSmoothScroll'
 
 const pwaStore = usePwaStore()
-const navStore = useNavigationStore()
+const tabStore = useTabStore()
 const viewportRef = ref<HTMLElement | null>(null)
 
 const { scrollToTop, refresh } = useSmoothScroll({
@@ -22,7 +23,7 @@ const { scrollToTop, refresh } = useSmoothScroll({
 })
 
 watch(
-  () => navStore.activeToolId,
+  () => tabStore.activeTabId,
   () => {
     scrollToTop(true)
     refresh()
@@ -38,6 +39,9 @@ onMounted(() => {
   <div class="app-layout-root">
     <!-- Top Bar -->
     <AppTopBar />
+
+    <!-- Workspace Tabs Strip -->
+    <AppTabBar />
 
     <div class="layout-body">
       <!-- Main Application Canvas (100% Full-Width) with Smooth Momentum Scrolling -->
@@ -81,7 +85,7 @@ onMounted(() => {
   flex: 1;
   width: 100%;
   max-width: 100%;
-  height: calc(100vh - 42px);
+  height: calc(100vh - 74px);
   min-height: 0;
   position: relative;
   overflow: hidden;
