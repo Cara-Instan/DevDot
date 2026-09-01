@@ -16,7 +16,12 @@ import type {
   ParsedCurlRequest
 } from '../types'
 
+const props = defineProps<{
+  tabId?: string
+}>()
+
 const snapshotStore = useSnapshotStore()
+const currentTabId = computed(() => props.tabId || 'curl-converter')
 
 // State
 const rawCurl = ref('')
@@ -139,7 +144,7 @@ watch(
       handleConvert()
 
       // Save state to snapshot store
-      snapshotStore.setToolState('curl-converter', {
+      snapshotStore.setTabState(currentTabId.value, 'curl-converter', {
         rawCurl: rawCurl.value,
         targetLanguage: targetLanguage.value,
         includeComments: includeComments.value,
@@ -152,7 +157,7 @@ watch(
 
 // Hydrate from snapshot on mount and external update
 watch(
-  () => snapshotStore.toolStates['curl-converter'],
+  () => snapshotStore.toolStates[currentTabId.value],
   (newState) => {
     if (newState && !isHydrating) {
       isHydrating = true
@@ -168,7 +173,7 @@ watch(
 )
 
 onMounted(() => {
-  const saved = snapshotStore.getToolState('curl-converter')
+  const saved = snapshotStore.getTabOrToolState<Record<string, any> | null>(props.tabId, 'curl-converter', null)
   if (saved) {
     if (saved.rawCurl !== undefined) rawCurl.value = saved.rawCurl
     if (saved.targetLanguage) targetLanguage.value = saved.targetLanguage

@@ -114,7 +114,13 @@ const SAMPLES = {
   }
 }
 
-const initialSaved = snapshotStore.getToolState('json-schema', {
+const props = defineProps<{
+  tabId?: string
+}>()
+
+const currentTabId = computed(() => props.tabId || 'json-schema')
+
+const initialSaved = snapshotStore.getTabOrToolState(props.tabId, 'json-schema', {
   inputJson: SAMPLES.apiResponse.content,
   outputCode: '',
   selectedTarget: 'typescript' as TargetLanguage,
@@ -273,7 +279,7 @@ watch(
   ],
   () => {
     if (isHydrating) return
-    snapshotStore.setToolState('json-schema', {
+    snapshotStore.setTabState(currentTabId.value, 'json-schema', {
       inputJson: inputJson.value,
       outputCode: outputCode.value,
       selectedTarget: selectedTarget.value,
@@ -287,6 +293,63 @@ watch(
       csharpOptions: { ...csharpOptions.value },
       schemaOptions: { ...schemaOptions.value }
     })
+  },
+  { deep: true }
+)
+
+// Hydrate from snapshot store
+watch(
+  () => snapshotStore.toolStates[currentTabId.value],
+  (newState) => {
+    if (newState && !isHydrating) {
+      isHydrating = true
+      if (newState.inputJson !== undefined && newState.inputJson !== inputJson.value) {
+        inputJson.value = newState.inputJson
+      }
+      if (newState.outputCode !== undefined && newState.outputCode !== outputCode.value) {
+        outputCode.value = newState.outputCode
+      }
+      if (newState.selectedTarget && newState.selectedTarget !== selectedTarget.value) {
+        selectedTarget.value = newState.selectedTarget
+      }
+      if (newState.splitDirection && newState.splitDirection !== splitDirection.value) {
+        splitDirection.value = newState.splitDirection
+      }
+      if (newState.autoGenerate !== undefined && newState.autoGenerate !== autoGenerate.value) {
+        autoGenerate.value = newState.autoGenerate
+      }
+      if (newState.tsOptions) {
+        tsOptions.value = { ...tsOptions.value, ...newState.tsOptions }
+      }
+      if (newState.goOptions) {
+        goOptions.value = { ...goOptions.value, ...newState.goOptions }
+      }
+      if (newState.rustOptions) {
+        rustOptions.value = {
+          ...rustOptions.value,
+          ...newState.rustOptions,
+          deriveMacros: Array.isArray(newState.rustOptions.deriveMacros)
+            ? [...newState.rustOptions.deriveMacros]
+            : rustOptions.value.deriveMacros
+        }
+      }
+      if (newState.javaOptions) {
+        javaOptions.value = { ...javaOptions.value, ...newState.javaOptions }
+      }
+      if (newState.pythonOptions) {
+        pythonOptions.value = { ...pythonOptions.value, ...newState.pythonOptions }
+      }
+      if (newState.csharpOptions) {
+        csharpOptions.value = { ...csharpOptions.value, ...newState.csharpOptions }
+      }
+      if (newState.schemaOptions) {
+        schemaOptions.value = { ...schemaOptions.value, ...newState.schemaOptions }
+      }
+      isHydrating = false
+      if (autoGenerate.value) {
+        handleGenerate()
+      }
+    }
   },
   { deep: true }
 )

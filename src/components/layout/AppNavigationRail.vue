@@ -8,7 +8,7 @@ import {
   FileText,
   Cpu,
   X,
-  LayoutDashboard,
+  Home,
   Search
 } from 'lucide-vue-next'
 import { useNavigationStore, ToolCategory } from '@/stores'
@@ -75,7 +75,7 @@ const isOverviewActive = computed(() => navStore.activeToolId === 'system-overvi
           @click="navStore.selectTool('system-overview')"
         >
           <div class="overview-icon-box">
-            <LayoutDashboard :size="18" />
+            <Home :size="18" />
           </div>
           <div class="overview-text">
             <span class="overview-title">Overview & Hub</span>

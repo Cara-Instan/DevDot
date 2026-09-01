@@ -33,9 +33,15 @@ import { useSnapshotStore, useSecurityStore } from '@/stores'
 import { openNativeFileDialog, saveNativeFileDialog } from '@/core/native'
 import type { IndentType, JsonFormatOptions, JsonFormatResult, SortKeysOrder } from '../types'
 
+const props = defineProps<{
+  tabId?: string
+}>()
+
 const { execute, isExecuting } = useExecutionEngine()
 const snapshotStore = useSnapshotStore()
 const securityStore = useSecurityStore()
+
+const currentTabId = computed(() => props.tabId || 'json-format')
 
 // Sample presets for quick testing and demonstrations
 const SAMPLES = {
@@ -71,7 +77,7 @@ const SAMPLES = {
 }
 
 // Initial state from snapshot store
-const initialSaved = snapshotStore.getToolState('json-format', {
+const initialSaved = snapshotStore.getTabOrToolState(props.tabId, 'json-format', {
   inputJson: SAMPLES.dirtyJson.content,
   outputJson: '',
   indentType: '2-spaces' as IndentType,
@@ -126,7 +132,7 @@ const activeEditorPane = ref<'input' | 'output'>('input')
 watch(
   [inputJson, outputJson, indentType, autoRepair, sortKeys, isMinified, splitDirection, autoPrettify],
   () => {
-    snapshotStore.setToolState('json-format', {
+    snapshotStore.setTabState(currentTabId.value, 'json-format', {
       inputJson: inputJson.value,
       outputJson: outputJson.value,
       indentType: indentType.value,
@@ -142,7 +148,7 @@ watch(
 
 // Hydrate from snapshot store
 watch(
-  () => snapshotStore.toolStates['json-format'],
+  () => snapshotStore.toolStates[currentTabId.value],
   (newState) => {
     if (newState) {
       if (newState.inputJson !== undefined && newState.inputJson !== inputJson.value) {

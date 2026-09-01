@@ -58,10 +58,16 @@ const snapshotStore = useSnapshotStore()
 const rootRef = ref<HTMLDivElement | null>(null)
 const isFullscreen = ref(false)
 
+const props = defineProps<{
+  tabId?: string
+}>()
+
+const currentTabId = computed(() => props.tabId || 'hash-generator')
+
 // ----------------------------------------------------
 // STATE PERSISTENCE INITIALIZATION
 // ----------------------------------------------------
-const initialSaved = snapshotStore.getToolState('hash-generator', {
+const initialSaved = snapshotStore.getTabOrToolState(props.tabId, 'hash-generator', {
   activeTab: 'hash' as 'hash' | 'id-gen' | 'bcrypt' | 'cipher' | 'decrypt',
   // Tab 1: Hash Generator
   hashInput: 'DevDot: 100% Offline Universal Developer Toolkit',
@@ -558,6 +564,9 @@ function handleKeyDown(e: KeyboardEvent) {
 // ----------------------------------------------------
 // WATCHERS & STATE PERSISTENCE
 // ----------------------------------------------------
+let isHydrating = false
+
+// Sync to snapshot store
 watch(
   [
     activeTab,
@@ -595,7 +604,8 @@ watch(
     customWordlist
   ],
   () => {
-    snapshotStore.setToolState('hash-generator', {
+    if (isHydrating) return
+    snapshotStore.setTabState(currentTabId.value, 'hash-generator', {
       activeTab: activeTab.value,
       hashInput: hashInput.value,
       hashUppercase: hashUppercase.value,
@@ -630,6 +640,115 @@ watch(
       lookupTargetHash: lookupTargetHash.value,
       customWordlist: customWordlist.value
     })
+  },
+  { deep: true }
+)
+
+// Hydrate from snapshot store
+watch(
+  () => snapshotStore.toolStates[currentTabId.value],
+  (newState) => {
+    if (newState && !isHydrating) {
+      isHydrating = true
+      if (newState.activeTab) activeTab.value = newState.activeTab
+      if (newState.hashInput !== undefined && newState.hashInput !== hashInput.value) {
+        hashInput.value = newState.hashInput
+      }
+      if (newState.hashUppercase !== undefined && newState.hashUppercase !== hashUppercase.value) {
+        hashUppercase.value = newState.hashUppercase
+      }
+      if (newState.hashEncoding && newState.hashEncoding !== hashEncoding.value) {
+        hashEncoding.value = newState.hashEncoding
+      }
+      if (newState.saltPrefix !== undefined && newState.saltPrefix !== saltPrefix.value) {
+        saltPrefix.value = newState.saltPrefix
+      }
+      if (newState.saltSuffix !== undefined && newState.saltSuffix !== saltSuffix.value) {
+        saltSuffix.value = newState.saltSuffix
+      }
+      if (newState.enableHmac !== undefined && newState.enableHmac !== enableHmac.value) {
+        enableHmac.value = newState.enableHmac
+      }
+      if (newState.hmacSecret !== undefined && newState.hmacSecret !== hmacSecret.value) {
+        hmacSecret.value = newState.hmacSecret
+      }
+      if (newState.hashToMatch !== undefined && newState.hashToMatch !== hashToMatch.value) {
+        hashToMatch.value = newState.hashToMatch
+      }
+      if (newState.showAdvancedHash !== undefined && newState.showAdvancedHash !== showAdvancedHash.value) {
+        showAdvancedHash.value = newState.showAdvancedHash
+      }
+      if (newState.showFileChecksum !== undefined && newState.showFileChecksum !== showFileChecksum.value) {
+        showFileChecksum.value = newState.showFileChecksum
+      }
+      if (newState.showMatcher !== undefined && newState.showMatcher !== showMatcher.value) {
+        showMatcher.value = newState.showMatcher
+      }
+      if (newState.idType && newState.idType !== idType.value) {
+        idType.value = newState.idType
+      }
+      if (newState.idCount !== undefined && newState.idCount !== idCount.value) {
+        idCount.value = newState.idCount
+      }
+      if (newState.idUppercase !== undefined && newState.idUppercase !== idUppercase.value) {
+        idUppercase.value = newState.idUppercase
+      }
+      if (newState.uuidHyphens !== undefined && newState.uuidHyphens !== uuidHyphens.value) {
+        uuidHyphens.value = newState.uuidHyphens
+      }
+      if (newState.nanoidLength !== undefined && newState.nanoidLength !== nanoidLength.value) {
+        nanoidLength.value = newState.nanoidLength
+      }
+      if (newState.nanoidPreset && newState.nanoidPreset !== nanoidPreset.value) {
+        nanoidPreset.value = newState.nanoidPreset
+      }
+      if (newState.nanoidAlphabet !== undefined && newState.nanoidAlphabet !== nanoidAlphabet.value) {
+        nanoidAlphabet.value = newState.nanoidAlphabet
+      }
+      if (newState.inspectUlidInput !== undefined && newState.inspectUlidInput !== inspectUlidInput.value) {
+        inspectUlidInput.value = newState.inspectUlidInput
+      }
+      if (newState.bcryptInputPassword !== undefined && newState.bcryptInputPassword !== bcryptInputPassword.value) {
+        bcryptInputPassword.value = newState.bcryptInputPassword
+      }
+      if (newState.bcryptRounds !== undefined && newState.bcryptRounds !== bcryptRounds.value) {
+        bcryptRounds.value = newState.bcryptRounds
+      }
+      if (newState.bcryptVerifyPassword !== undefined && newState.bcryptVerifyPassword !== bcryptVerifyPassword.value) {
+        bcryptVerifyPassword.value = newState.bcryptVerifyPassword
+      }
+      if (newState.bcryptVerifyHash !== undefined && newState.bcryptVerifyHash !== bcryptVerifyHash.value) {
+        bcryptVerifyHash.value = newState.bcryptVerifyHash
+      }
+      if (newState.cipherMode && newState.cipherMode !== cipherMode.value) {
+        cipherMode.value = newState.cipherMode
+      }
+      if (newState.cipherInput !== undefined && newState.cipherInput !== cipherInput.value) {
+        cipherInput.value = newState.cipherInput
+      }
+      if (newState.cipherPassphrase !== undefined && newState.cipherPassphrase !== cipherPassphrase.value) {
+        cipherPassphrase.value = newState.cipherPassphrase
+      }
+      if (newState.cipherAesMode && newState.cipherAesMode !== cipherAesMode.value) {
+        cipherAesMode.value = newState.cipherAesMode
+      }
+      if (newState.cipherEncoding && newState.cipherEncoding !== cipherEncoding.value) {
+        cipherEncoding.value = newState.cipherEncoding
+      }
+      if (newState.cipherIv !== undefined && newState.cipherIv !== cipherIv.value) {
+        cipherIv.value = newState.cipherIv
+      }
+      if (newState.cipherSalt !== undefined && newState.cipherSalt !== cipherSalt.value) {
+        cipherSalt.value = newState.cipherSalt
+      }
+      if (newState.lookupTargetHash !== undefined && newState.lookupTargetHash !== lookupTargetHash.value) {
+        lookupTargetHash.value = newState.lookupTargetHash
+      }
+      if (newState.customWordlist !== undefined && newState.customWordlist !== customWordlist.value) {
+        customWordlist.value = newState.customWordlist
+      }
+      isHydrating = false
+    }
   },
   { deep: true }
 )

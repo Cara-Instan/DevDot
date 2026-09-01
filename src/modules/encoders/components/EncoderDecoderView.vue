@@ -120,10 +120,16 @@ const PRESETS: Record<EncoderMode, { name: string; content: string; direction?: 
   ]
 }
 
+const props = defineProps<{
+  tabId?: string
+}>()
+
+const currentTabId = computed(() => props.tabId || 'encoders-decoders')
+
 const DEFAULT_SAMPLE = PRESETS.base64[0].content
 
 // Initial State from Snapshot Store
-const initialSaved = snapshotStore.getToolState('encoders-decoders', {
+const initialSaved = snapshotStore.getTabOrToolState(props.tabId, 'encoders-decoders', {
   activeMode: 'base64' as EncoderMode,
   direction: 'encode' as ConversionDirection,
   inputText: DEFAULT_SAMPLE,
@@ -207,7 +213,7 @@ watch(
   ],
   () => {
     if (isHydrating) return
-    snapshotStore.setToolState('encoders-decoders', {
+    snapshotStore.setTabState(currentTabId.value, 'encoders-decoders', {
       activeMode: activeMode.value,
       direction: direction.value,
       inputText: inputText.value,
@@ -232,7 +238,7 @@ watch(
 
 // Hydrate from snapshot store on external change
 watch(
-  () => snapshotStore.toolStates['encoders-decoders'],
+  () => snapshotStore.toolStates[currentTabId.value],
   (newState) => {
     if (newState && !isHydrating) {
       isHydrating = true

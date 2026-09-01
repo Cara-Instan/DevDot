@@ -134,8 +134,14 @@ ID: 1003 | Name: Luther Stickell | Email: luther@hacker-net.io | Phone: +44 20 7
   }
 }
 
+const props = defineProps<{
+  tabId?: string
+}>()
+
+const currentTabId = computed(() => props.tabId || 'pii-redactor')
+
 // Initial state from snapshot store
-const initialSaved = snapshotStore.getToolState('pii-redactor', {
+const initialSaved = snapshotStore.getTabOrToolState(props.tabId, 'pii-redactor', {
   inputText: SAMPLES.serverAccessLog.content,
   maskingMode: 'category-tag' as MaskingMode,
   customMask: '[REDACTED]',
@@ -418,43 +424,8 @@ function handleRedact() {
   executionTimeMs.value = result.executionTimeMs
 
   // Save to snapshot store
-  snapshotStore.setToolState('pii-redactor', {
-    inputText: inputText.value,
-    maskingMode: maskingMode.value,
-    customMask: customMask.value,
-    preserveLength: preserveLength.value,
-    activeRuleIds: activeRuleIds.value,
-    customRules: customRules.value,
-    splitDirection: splitDirection.value,
-    showStructural: showStructural.value,
-    structuralPanelHeight: structuralPanelHeight.value,
-    isPanelMaximized: isPanelMaximized.value,
-    activeBottomTab: activeBottomTab.value
-  })
-}
-
-// Debounced auto-redact
-let debounceTimer: any = null
-function queueRedact() {
-  clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(() => {
-    handleRedact()
-  }, 150)
-}
-
-watch(
-  [inputText, maskingMode, customMask, preserveLength, activeRuleIds, customRules],
-  () => {
-    queueRedact()
-  },
-  { deep: true }
-)
-
-// Sync panel states
-watch(
-  [splitDirection, showStructural, structuralPanelHeight, isPanelMaximized, activeBottomTab],
-  () => {
-    snapshotStore.setToolState('pii-redactor', {
+  if (!isHydrating) {
+    snapshotStore.setTabState(currentTabId.value, 'pii-redactor', {
       inputText: inputText.value,
       maskingMode: maskingMode.value,
       customMask: customMask.value,
@@ -468,6 +439,93 @@ watch(
       activeBottomTab: activeBottomTab.value
     })
   }
+}
+
+let isHydrating = false
+
+// Debounced auto-redact
+let debounceTimer: any = null
+function queueRedact() {
+  clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    handleRedact()
+  }, 150)
+}
+
+watch(
+  [inputText, maskingMode, customMask, preserveLength, activeRuleIds, customRules],
+  () => {
+    if (isHydrating) return
+    queueRedact()
+  },
+  { deep: true }
+)
+
+// Sync panel states
+watch(
+  [splitDirection, showStructural, structuralPanelHeight, isPanelMaximized, activeBottomTab],
+  () => {
+    if (isHydrating) return
+    snapshotStore.setTabState(currentTabId.value, 'pii-redactor', {
+      inputText: inputText.value,
+      maskingMode: maskingMode.value,
+      customMask: customMask.value,
+      preserveLength: preserveLength.value,
+      activeRuleIds: activeRuleIds.value,
+      customRules: customRules.value,
+      splitDirection: splitDirection.value,
+      showStructural: showStructural.value,
+      structuralPanelHeight: structuralPanelHeight.value,
+      isPanelMaximized: isPanelMaximized.value,
+      activeBottomTab: activeBottomTab.value
+    })
+  }
+)
+
+// Hydrate from snapshot store
+watch(
+  () => snapshotStore.toolStates[currentTabId.value],
+  (newState) => {
+    if (newState && !isHydrating) {
+      isHydrating = true
+      if (newState.inputText !== undefined && newState.inputText !== inputText.value) {
+        inputText.value = newState.inputText
+      }
+      if (newState.maskingMode && newState.maskingMode !== maskingMode.value) {
+        maskingMode.value = newState.maskingMode
+      }
+      if (newState.customMask !== undefined && newState.customMask !== customMask.value) {
+        customMask.value = newState.customMask
+      }
+      if (newState.preserveLength !== undefined && newState.preserveLength !== preserveLength.value) {
+        preserveLength.value = newState.preserveLength
+      }
+      if (Array.isArray(newState.activeRuleIds)) {
+        activeRuleIds.value = [...newState.activeRuleIds]
+      }
+      if (Array.isArray(newState.customRules)) {
+        customRules.value = [...newState.customRules]
+      }
+      if (newState.splitDirection && newState.splitDirection !== splitDirection.value) {
+        splitDirection.value = newState.splitDirection
+      }
+      if (newState.showStructural !== undefined && newState.showStructural !== showStructural.value) {
+        showStructural.value = newState.showStructural
+      }
+      if (newState.structuralPanelHeight !== undefined && newState.structuralPanelHeight !== structuralPanelHeight.value) {
+        structuralPanelHeight.value = newState.structuralPanelHeight
+      }
+      if (newState.isPanelMaximized !== undefined && newState.isPanelMaximized !== isPanelMaximized.value) {
+        isPanelMaximized.value = newState.isPanelMaximized
+      }
+      if (newState.activeBottomTab && newState.activeBottomTab !== activeBottomTab.value) {
+        activeBottomTab.value = newState.activeBottomTab
+      }
+      isHydrating = false
+      handleRedact()
+    }
+  },
+  { deep: true }
 )
 
 // In-Editor Search Navigation

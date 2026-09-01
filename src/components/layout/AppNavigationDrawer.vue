@@ -8,7 +8,7 @@ import {
   FileText,
   Cpu,
   X,
-  LayoutDashboard,
+  Home,
   Search
 } from 'lucide-vue-next'
 import appLogo from '@/assets/logo.png'
@@ -116,7 +116,7 @@ function handleSelectOverview() {
             @click="handleSelectOverview"
           >
             <div class="overview-icon-box">
-              <LayoutDashboard :size="18" />
+              <Home :size="18" />
             </div>
             <div class="overview-text">
               <span class="overview-title">Overview & Hub</span>

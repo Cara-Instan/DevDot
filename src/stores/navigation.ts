@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useTabStore } from './tabs'
+
 
 export type ToolCategory = 'all' | 'json' | 'crypto' | 'converters' | 'text' | 'system'
 
@@ -22,7 +24,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
     name: 'Overview & Dashboard',
     description: 'Universal developer workspace overview, tool catalog, quick utilities, and engine diagnostics.',
     category: 'system',
-    icon: 'LayoutDashboard',
+    icon: 'Home',
     keywords: ['dashboard', 'system', 'worker', 'overview', 'benchmark', 'status', 'home', 'hub'],
     status: 'ready'
   },
@@ -255,7 +257,7 @@ export const useNavigationStore = defineStore('navigation', () => {
     return list
   })
 
-  function selectTool(toolId: string) {
+  function selectTool(toolId: string, options?: { forceNew?: boolean }) {
     const found = ALL_TOOLS.find((t) => t.id === toolId)
     if (found) {
       activeToolId.value = toolId
@@ -263,6 +265,12 @@ export const useNavigationStore = defineStore('navigation', () => {
       isMobileNavOpen.value = false
       if (toolId !== 'system-overview') {
         recordRecent(toolId)
+      }
+      try {
+        const tabStore = useTabStore()
+        tabStore.openTab(toolId, { forceNew: options?.forceNew })
+      } catch {
+        // ignore during initial bootstrap
       }
     }
   }

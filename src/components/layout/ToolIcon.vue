@@ -16,7 +16,8 @@ import {
   ArrowLeftRight,
   FileText,
   Cpu,
-  Wrench
+  Wrench,
+  Home
 } from 'lucide-vue-next'
 
 const props = withDefaults(
@@ -44,7 +45,8 @@ const iconMap: Record<string, any> = {
   ShieldCheck,
   ArrowLeftRight,
   FileText,
-  Cpu
+  Cpu,
+  Home
 }
 
 const component = computed(() => {
