@@ -131,6 +131,7 @@ const unifiedFindIndex = ref(0)
 const unifiedFindInputRef = ref<HTMLInputElement | null>(null)
 
 // Sync changes to snapshot store
+let diffSyncTimer: any = null
 watch(
   [
     leftJson,
@@ -146,19 +147,22 @@ watch(
     isPanelMaximized
   ],
   () => {
-    snapshotStore.setTabState(currentTabId.value, 'json-diff', {
-      leftJson: leftJson.value,
-      rightJson: rightJson.value,
-      viewMode: viewMode.value,
-      sortKeys: sortKeys.value,
-      autoFormat: autoFormat.value,
-      collapseUnchanged: collapseUnchanged.value,
-      contextLines: contextLines.value,
-      editMode: editMode.value,
-      showStructural: showStructural.value,
-      structuralPanelHeight: structuralPanelHeight.value,
-      isPanelMaximized: isPanelMaximized.value
-    })
+    clearTimeout(diffSyncTimer)
+    diffSyncTimer = setTimeout(() => {
+      snapshotStore.setTabState(currentTabId.value, 'json-diff', {
+        leftJson: leftJson.value,
+        rightJson: rightJson.value,
+        viewMode: viewMode.value,
+        sortKeys: sortKeys.value,
+        autoFormat: autoFormat.value,
+        collapseUnchanged: collapseUnchanged.value,
+        contextLines: contextLines.value,
+        editMode: editMode.value,
+        showStructural: showStructural.value,
+        structuralPanelHeight: structuralPanelHeight.value,
+        isPanelMaximized: isPanelMaximized.value
+      })
+    }, 150)
   },
   { deep: true }
 )
@@ -168,18 +172,21 @@ watch(
   () => snapshotStore.toolStates[currentTabId.value],
   (newState) => {
     if (newState) {
-      if (newState.leftJson !== undefined && newState.leftJson !== leftJson.value) leftJson.value = newState.leftJson
-      if (newState.rightJson !== undefined && newState.rightJson !== rightJson.value) rightJson.value = newState.rightJson
-      if (newState.viewMode !== undefined && newState.viewMode !== viewMode.value) viewMode.value = newState.viewMode
-      if (newState.sortKeys !== undefined && newState.sortKeys !== sortKeys.value) sortKeys.value = newState.sortKeys
-      if (newState.autoFormat !== undefined && newState.autoFormat !== autoFormat.value) autoFormat.value = newState.autoFormat
-      if (newState.collapseUnchanged !== undefined && newState.collapseUnchanged !== collapseUnchanged.value) collapseUnchanged.value = newState.collapseUnchanged
-      if (newState.contextLines !== undefined && newState.contextLines !== contextLines.value) contextLines.value = newState.contextLines
-      if (newState.editMode !== undefined && newState.editMode !== editMode.value) editMode.value = newState.editMode
-      if (newState.showStructural !== undefined && newState.showStructural !== showStructural.value) showStructural.value = newState.showStructural
-      if (newState.structuralPanelHeight !== undefined && newState.structuralPanelHeight !== structuralPanelHeight.value) structuralPanelHeight.value = newState.structuralPanelHeight
-      if (newState.isPanelMaximized !== undefined && newState.isPanelMaximized !== isPanelMaximized.value) isPanelMaximized.value = newState.isPanelMaximized
-      handleRunDiff()
+      let changed = false
+      if (newState.leftJson !== undefined && newState.leftJson !== leftJson.value) { leftJson.value = newState.leftJson; changed = true }
+      if (newState.rightJson !== undefined && newState.rightJson !== rightJson.value) { rightJson.value = newState.rightJson; changed = true }
+      if (newState.viewMode !== undefined && newState.viewMode !== viewMode.value) { viewMode.value = newState.viewMode; changed = true }
+      if (newState.sortKeys !== undefined && newState.sortKeys !== sortKeys.value) { sortKeys.value = newState.sortKeys; changed = true }
+      if (newState.autoFormat !== undefined && newState.autoFormat !== autoFormat.value) { autoFormat.value = newState.autoFormat; changed = true }
+      if (newState.collapseUnchanged !== undefined && newState.collapseUnchanged !== collapseUnchanged.value) { collapseUnchanged.value = newState.collapseUnchanged; changed = true }
+      if (newState.contextLines !== undefined && newState.contextLines !== contextLines.value) { contextLines.value = newState.contextLines; changed = true }
+      if (newState.editMode !== undefined && newState.editMode !== editMode.value) { editMode.value = newState.editMode; changed = true }
+      if (newState.showStructural !== undefined && newState.showStructural !== showStructural.value) { showStructural.value = newState.showStructural; changed = true }
+      if (newState.structuralPanelHeight !== undefined && newState.structuralPanelHeight !== structuralPanelHeight.value) { structuralPanelHeight.value = newState.structuralPanelHeight; changed = true }
+      if (newState.isPanelMaximized !== undefined && newState.isPanelMaximized !== isPanelMaximized.value) { isPanelMaximized.value = newState.isPanelMaximized; changed = true }
+      if (changed) {
+        handleRunDiff()
+      }
     }
   },
   { deep: true }

@@ -500,10 +500,10 @@ watch(
       if (newState.preserveLength !== undefined && newState.preserveLength !== preserveLength.value) {
         preserveLength.value = newState.preserveLength
       }
-      if (Array.isArray(newState.activeRuleIds)) {
+      if (Array.isArray(newState.activeRuleIds) && JSON.stringify(newState.activeRuleIds) !== JSON.stringify(activeRuleIds.value)) {
         activeRuleIds.value = [...newState.activeRuleIds]
       }
-      if (Array.isArray(newState.customRules)) {
+      if (Array.isArray(newState.customRules) && JSON.stringify(newState.customRules) !== JSON.stringify(customRules.value)) {
         customRules.value = [...newState.customRules]
       }
       if (newState.splitDirection && newState.splitDirection !== splitDirection.value) {
@@ -521,8 +521,10 @@ watch(
       if (newState.activeBottomTab && newState.activeBottomTab !== activeBottomTab.value) {
         activeBottomTab.value = newState.activeBottomTab
       }
-      isHydrating = false
-      handleRedact()
+      nextTick(() => {
+        isHydrating = false
+        handleRedact()
+      })
     }
   },
   { deep: true }

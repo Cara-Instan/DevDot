@@ -260,12 +260,12 @@ const schemaOptions = ref<JsonSchemaOptions>(initialSaved.schemaOptions || {
 })
 
 let isHydrating = false
+let syncTimer: any = null
 
 // Sync to snapshot store
 watch(
   [
     inputJson,
-    outputCode,
     selectedTarget,
     splitDirection,
     autoGenerate,
@@ -279,20 +279,24 @@ watch(
   ],
   () => {
     if (isHydrating) return
-    snapshotStore.setTabState(currentTabId.value, 'json-schema', {
-      inputJson: inputJson.value,
-      outputCode: outputCode.value,
-      selectedTarget: selectedTarget.value,
-      splitDirection: splitDirection.value,
-      autoGenerate: autoGenerate.value,
-      tsOptions: { ...tsOptions.value },
-      goOptions: { ...goOptions.value },
-      rustOptions: { ...rustOptions.value, deriveMacros: [...rustOptions.value.deriveMacros] },
-      javaOptions: { ...javaOptions.value },
-      pythonOptions: { ...pythonOptions.value },
-      csharpOptions: { ...csharpOptions.value },
-      schemaOptions: { ...schemaOptions.value }
-    })
+    clearTimeout(syncTimer)
+    syncTimer = setTimeout(() => {
+      if (isHydrating) return
+      snapshotStore.setTabState(currentTabId.value, 'json-schema', {
+        inputJson: inputJson.value,
+        outputCode: outputCode.value,
+        selectedTarget: selectedTarget.value,
+        splitDirection: splitDirection.value,
+        autoGenerate: autoGenerate.value,
+        tsOptions: { ...tsOptions.value },
+        goOptions: { ...goOptions.value },
+        rustOptions: { ...rustOptions.value, deriveMacros: [...rustOptions.value.deriveMacros] },
+        javaOptions: { ...javaOptions.value },
+        pythonOptions: { ...pythonOptions.value },
+        csharpOptions: { ...csharpOptions.value },
+        schemaOptions: { ...schemaOptions.value }
+      })
+    }, 150)
   },
   { deep: true }
 )
@@ -303,14 +307,18 @@ watch(
   (newState) => {
     if (newState && !isHydrating) {
       isHydrating = true
+      let changed = false
+
       if (newState.inputJson !== undefined && newState.inputJson !== inputJson.value) {
         inputJson.value = newState.inputJson
+        changed = true
       }
       if (newState.outputCode !== undefined && newState.outputCode !== outputCode.value) {
         outputCode.value = newState.outputCode
       }
       if (newState.selectedTarget && newState.selectedTarget !== selectedTarget.value) {
         selectedTarget.value = newState.selectedTarget
+        changed = true
       }
       if (newState.splitDirection && newState.splitDirection !== splitDirection.value) {
         splitDirection.value = newState.splitDirection
@@ -318,13 +326,15 @@ watch(
       if (newState.autoGenerate !== undefined && newState.autoGenerate !== autoGenerate.value) {
         autoGenerate.value = newState.autoGenerate
       }
-      if (newState.tsOptions) {
+      if (newState.tsOptions && JSON.stringify(newState.tsOptions) !== JSON.stringify(tsOptions.value)) {
         tsOptions.value = { ...tsOptions.value, ...newState.tsOptions }
+        changed = true
       }
-      if (newState.goOptions) {
+      if (newState.goOptions && JSON.stringify(newState.goOptions) !== JSON.stringify(goOptions.value)) {
         goOptions.value = { ...goOptions.value, ...newState.goOptions }
+        changed = true
       }
-      if (newState.rustOptions) {
+      if (newState.rustOptions && JSON.stringify(newState.rustOptions) !== JSON.stringify(rustOptions.value)) {
         rustOptions.value = {
           ...rustOptions.value,
           ...newState.rustOptions,
@@ -332,23 +342,31 @@ watch(
             ? [...newState.rustOptions.deriveMacros]
             : rustOptions.value.deriveMacros
         }
+        changed = true
       }
-      if (newState.javaOptions) {
+      if (newState.javaOptions && JSON.stringify(newState.javaOptions) !== JSON.stringify(javaOptions.value)) {
         javaOptions.value = { ...javaOptions.value, ...newState.javaOptions }
+        changed = true
       }
-      if (newState.pythonOptions) {
+      if (newState.pythonOptions && JSON.stringify(newState.pythonOptions) !== JSON.stringify(pythonOptions.value)) {
         pythonOptions.value = { ...pythonOptions.value, ...newState.pythonOptions }
+        changed = true
       }
-      if (newState.csharpOptions) {
+      if (newState.csharpOptions && JSON.stringify(newState.csharpOptions) !== JSON.stringify(csharpOptions.value)) {
         csharpOptions.value = { ...csharpOptions.value, ...newState.csharpOptions }
+        changed = true
       }
-      if (newState.schemaOptions) {
+      if (newState.schemaOptions && JSON.stringify(newState.schemaOptions) !== JSON.stringify(schemaOptions.value)) {
         schemaOptions.value = { ...schemaOptions.value, ...newState.schemaOptions }
+        changed = true
       }
-      isHydrating = false
-      if (autoGenerate.value) {
-        handleGenerate()
-      }
+
+      nextTick(() => {
+        isHydrating = false
+        if (changed && autoGenerate.value) {
+          handleGenerate()
+        }
+      })
     }
   },
   { deep: true }
