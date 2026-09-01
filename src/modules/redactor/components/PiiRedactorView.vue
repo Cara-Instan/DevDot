@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import {
   EyeOff,
   Copy,
   Check,
   RotateCcw,
   Download,
+  Upload,
   Play,
   SlidersHorizontal,
   Plus,
@@ -26,16 +27,28 @@ import {
   Maximize2,
   Minimize2,
   FileSpreadsheet,
-  FileCheck2
+  FileCheck2,
+  Database,
+  Shield,
+  Columns2,
+  Rows3,
+  ChevronUp,
+  ChevronDown,
+  Sparkles,
+  Fingerprint,
+  Tag,
+  Binary
 } from 'lucide-vue-next'
 import {
   M3Button,
-  M3Switch,
   M3TextField,
-  M3Dialog
+  M3Dialog,
+  M3Tooltip,
+  SplitPane
 } from '@/components'
 import { CodeEditor } from '@/components/editor'
 import { useSnapshotStore, useSecurityStore } from '@/stores'
+import { openNativeFileDialog, saveNativeFileDialog } from '@/core/native'
 import {
   DEFAULT_PII_RULES,
   redactPii
@@ -55,103 +68,13 @@ const securityStore = useSecurityStore()
 const rootRef = ref<HTMLDivElement | null>(null)
 const isFullscreen = ref(false)
 
-// State
-const initialSaved = snapshotStore.getToolState('pii-redactor', {
-  inputText: '',
-  maskingMode: 'category-tag' as MaskingMode,
-  customMask: '[REDACTED]',
-  preserveLength: false,
-  activeRuleIds: DEFAULT_PII_RULES.map((r) => r.id),
-  customRules: [] as PiiRule[],
-  showStructural: true,
-  structuralPanelHeight: 260,
-  isPanelMaximized: false
-})
-
-const inputText = ref(initialSaved.inputText || '')
-const outputText = ref('')
-const maskingMode = ref<MaskingMode>(initialSaved.maskingMode || 'category-tag')
-const customMask = ref(initialSaved.customMask || '[REDACTED]')
-const preserveLength = ref(initialSaved.preserveLength || false)
-const isCopied = ref(false)
-const copiedMatchId = ref<string | null>(null)
-const executionTimeMs = ref<number | null>(null)
-const totalMatches = ref(0)
-const matchesByCategory = ref<Record<PiiCategory, number>>({
-  email: 0,
-  password: 0,
-  'credit-card': 0,
-  jwt: 0,
-  ip: 0,
-  'api-key': 0,
-  phone: 0,
-  ssn: 0,
-  'mac-address': 0,
-  custom: 0
-})
-const matchesList = ref<PiiMatch[]>([])
-
-// Bottom Structural Panel State
-const showStructural = ref<boolean>(initialSaved.showStructural ?? true)
-const structuralPanelHeight = ref<number>(initialSaved.structuralPanelHeight ?? 260)
-const isPanelMaximized = ref<boolean>(initialSaved.isPanelMaximized ?? false)
-const isPanelDragging = ref(false)
-const filterQuery = ref('')
-const selectedFilterCategory = ref<string>('all')
-
-// Rules Management
-const activeRuleIds = ref<string[]>(initialSaved.activeRuleIds || DEFAULT_PII_RULES.map((r) => r.id))
-const customRules = ref<PiiRule[]>(initialSaved.customRules || [])
-const isRulesDrawerOpen = ref(false)
-const isAddCustomRuleDialogOpen = ref(false)
-
-// New Custom Rule Form State
-const newRuleName = ref('')
-const newRulePattern = ref('')
-const newRuleFlags = ref('g')
-const newRuleReplacement = ref('[CUSTOM_REDACTED]')
-const newRuleCategory = ref<PiiCategory>('custom')
-const customRuleError = ref<string | null>(null)
-
-// Masking Modes list
-const MASKING_MODES: { id: MaskingMode; label: string; description: string; example: string }[] = [
-  {
-    id: 'category-tag',
-    label: 'Category Tag',
-    description: 'Replace with descriptive category placeholder tags',
-    example: '[EMAIL], [CREDIT_CARD], [IP_ADDRESS]'
-  },
-  {
-    id: 'fixed-mask',
-    label: 'Fixed String',
-    description: 'Replace all matches with a uniform custom string',
-    example: '[REDACTED] or ***'
-  },
-  {
-    id: 'asterisks',
-    label: 'Asterisks (*)',
-    description: 'Mask with asterisks (fixed length or matching length)',
-    example: '*** or **********'
-  },
-  {
-    id: 'partial',
-    label: 'Partial Masking',
-    description: 'Keep start/end characters visible for debugging context',
-    example: 'j***e@domain.com, 4111-****-1234'
-  },
-  {
-    id: 'hash-pseudonym',
-    label: 'Hash Pseudonym',
-    description: 'Deterministic hash pseudonym preserving referential logs',
-    example: '[REDACTED_#3f8a] (same key = same hash)'
-  }
-]
-
-// Preset Sample Logs
-const SAMPLES: Record<string, { label: string; desc: string; content: string }> = {
+// Sample Preset Logs
+const SAMPLES: Record<string, { label: string; shortLabel: string; desc: string; content: string; icon: any }> = {
   serverAccessLog: {
     label: 'Access Log',
+    shortLabel: 'Access',
     desc: 'Web server access log with client IPs, auth tokens, emails, and sensitive query parameters.',
+    icon: Sparkles,
     content: `2026-08-27T08:14:22.104Z [INFO] HTTP/1.1 GET /api/v1/users?email=sarah.connor@cyberdyne.com&auth_token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c3JfODkyMSIsInJvbGUiOiJ1c2VyIn0.wE_45nL_89kM
 Client IP: 192.168.1.105 forwarded for 203.0.113.195 - User-Agent: Mozilla/5.0
 2026-08-27T08:14:23.412Z [DEBUG] DB query executed for user=sarah.connor@cyberdyne.com (id: 492)
@@ -161,7 +84,9 @@ Client IP: 192.168.1.105 forwarded for 203.0.113.195 - User-Agent: Mozilla/5.0
   },
   paymentLog: {
     label: 'Payment',
+    shortLabel: 'Payment',
     desc: 'Checkout event payload containing customer card numbers, billing emails, phone, and Stripe API keys.',
+    icon: CreditCard,
     content: `{
   "event": "charge.succeeded",
   "api_key": "sk_live_51MszJ8Kl48v92NlQ9837192837491209384",
@@ -185,24 +110,170 @@ Client IP: 192.168.1.105 forwarded for 203.0.113.195 - User-Agent: Mozilla/5.0
 }`
   },
   cloudInfraLog: {
-    label: 'AWS Keys',
-    desc: 'Deployment log containing AWS access credentials, database connection strings, and Slack webhooks.',
-    content: `[terraform-apply] Initializing AWS Provider...
+    label: 'Cloud & DevOps',
+    shortLabel: 'DevOps',
+    desc: 'Deployment log containing AWS credentials, database connection strings, and GitHub PATs.',
+    icon: Cpu,
+    content: `[terraform-apply] Initializing AWS Provider & Cloud Database...
 AWS_ACCESS_KEY_ID = "AKIAIOSFODNN7EXAMPLE"
 AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
-Connecting to database instance: postgresql://admin_master:P@ssw0rd2026!@10.0.1.250:5432/production_db
+Connecting to primary database: postgresql://admin_master:P@ssw0rd2026!@10.0.1.250:5432/production_db
 Exporting GitHub deployment token: ghp_918237498172938471928374918237498172
 Sending status notification to Slack: xoxb-123456789012-1234567890123-456789abcdefghijklmnopqrstuvwxyz
-Google Cloud Storage API Key: AIzaSyD-98127398127398127398127398123`
+Google Cloud Storage API Key: AIzaSyD-98127398127398127398127398123
+MongoDB URI: mongodb+srv://db_admin:SecretPass99@cluster0.devdot.mongodb.net/app_prod`
   },
   crmQueryLog: {
-    label: 'Contacts',
-    desc: 'Customer export containing phone numbers, SSNs, personal emails, and MAC addresses.',
-    content: `ID: 1001 | Name: Ethan Hunt | Email: hunt.e@imf-ops.net | Phone: +62 812-9876-5432 | SSN: 881-23-4910 | Device MAC: 00-50-56-C0-00-08
+    label: 'Customer Contacts',
+    shortLabel: 'Contacts',
+    desc: 'Customer export containing phone numbers, NIK national IDs, personal emails, and MAC addresses.',
+    icon: Fingerprint,
+    content: `ID: 1001 | Name: Ethan Hunt | Email: hunt.e@imf-ops.net | Phone: +62 812-9876-5432 | NIK: 3171012304950001 | Device MAC: 00-50-56-C0-00-08
 ID: 1002 | Name: Benji Dunn | Email: benji@imf-tech.org | Phone: (415) 892-1002 | SSN: 992-10-8831 | IP: 198.51.100.45
 ID: 1003 | Name: Luther Stickell | Email: luther@hacker-net.io | Phone: +44 20 7946 0912 | Password: correct-horse-battery-staple`
   }
 }
+
+// Initial state from snapshot store
+const initialSaved = snapshotStore.getToolState('pii-redactor', {
+  inputText: SAMPLES.serverAccessLog.content,
+  maskingMode: 'category-tag' as MaskingMode,
+  customMask: '[REDACTED]',
+  preserveLength: false,
+  activeRuleIds: DEFAULT_PII_RULES.map((r) => r.id),
+  customRules: [] as PiiRule[],
+  splitDirection: 'horizontal' as 'horizontal' | 'vertical',
+  showStructural: true,
+  structuralPanelHeight: 260,
+  isPanelMaximized: false,
+  activeBottomTab: 'entities' as 'entities' | 'vault'
+})
+
+const inputText = ref(initialSaved.inputText || '')
+const outputText = ref('')
+const maskingMode = ref<MaskingMode>(initialSaved.maskingMode || 'category-tag')
+const customMask = ref(initialSaved.customMask || '[REDACTED]')
+const preserveLength = ref(initialSaved.preserveLength || false)
+const splitDirection = ref<'horizontal' | 'vertical'>(initialSaved.splitDirection || 'horizontal')
+const mobileTab = ref<'both' | 'input' | 'output'>('both')
+
+// Action States
+const isCopied = ref(false)
+const isInputCopied = ref(false)
+const isTokenMapCopied = ref(false)
+const copiedMatchId = ref<string | null>(null)
+const executionTimeMs = ref<number | null>(null)
+const totalMatches = ref(0)
+const matchesByCategory = ref<Record<PiiCategory, number>>({
+  email: 0,
+  password: 0,
+  'credit-card': 0,
+  jwt: 0,
+  ip: 0,
+  'api-key': 0,
+  'cloud-secret': 0,
+  'database-uri': 0,
+  phone: 0,
+  ssn: 0,
+  'identity-number': 0,
+  'mac-address': 0,
+  custom: 0
+})
+const matchesList = ref<PiiMatch[]>([])
+const tokenMap = ref<Record<string, string>>({})
+
+// Bottom Panel State
+const showStructural = ref<boolean>(initialSaved.showStructural ?? true)
+const structuralPanelHeight = ref<number>(initialSaved.structuralPanelHeight ?? 260)
+const isPanelMaximized = ref<boolean>(initialSaved.isPanelMaximized ?? false)
+const isPanelDragging = ref(false)
+const activeBottomTab = ref<'entities' | 'vault'>(initialSaved.activeBottomTab || 'entities')
+const filterQuery = ref('')
+const selectedFilterCategory = ref<string>('all')
+const revealSecrets = ref(false)
+
+// Editor Refs & Find States
+const inputEditorRef = ref<any>(null)
+const outputEditorRef = ref<any>(null)
+
+const inputFindOpen = ref(false)
+const inputFindQuery = ref('')
+const inputFindCase = ref(false)
+const inputFindIndex = ref(0)
+const inputFindInputRef = ref<HTMLInputElement | null>(null)
+
+const outputFindOpen = ref(false)
+const outputFindQuery = ref('')
+const outputFindCase = ref(false)
+const outputFindIndex = ref(0)
+const outputFindInputRef = ref<HTMLInputElement | null>(null)
+
+const activeEditorPane = ref<'input' | 'output'>('input')
+
+// Rules Management
+const activeRuleIds = ref<string[]>(initialSaved.activeRuleIds || DEFAULT_PII_RULES.map((r) => r.id))
+const customRules = ref<PiiRule[]>(initialSaved.customRules || [])
+const isRulesDrawerOpen = ref(false)
+const isAddCustomRuleDialogOpen = ref(false)
+
+// New Custom Rule Form State
+const newRuleName = ref('')
+const newRulePattern = ref('')
+const newRuleFlags = ref('g')
+const newRuleReplacement = ref('[CUSTOM_REDACTED]')
+const newRuleCategory = ref<PiiCategory>('custom')
+const customRuleError = ref<string | null>(null)
+
+// Masking Modes List
+const MASKING_MODES: {
+  id: MaskingMode
+  label: string
+  shortLabel: string
+  description: string
+  example: string
+  icon: any
+}[] = [
+  {
+    id: 'category-tag',
+    label: 'Category Tag',
+    shortLabel: 'Tag',
+    description: 'Category Tag: Replace with descriptive placeholder tags (e.g. [EMAIL], [IP_ADDRESS])',
+    example: '[EMAIL], [CREDIT_CARD], [IP_ADDRESS]',
+    icon: Tag
+  },
+  {
+    id: 'fixed-mask',
+    label: 'Fixed String',
+    shortLabel: 'Fixed',
+    description: 'Fixed String: Replace all matches with custom string (e.g. [REDACTED])',
+    example: '[REDACTED] or ***',
+    icon: FileText
+  },
+  {
+    id: 'asterisks',
+    label: 'Asterisks (*)',
+    shortLabel: '***',
+    description: 'Asterisks: Mask with asterisks (e.g. *** or **********)',
+    example: '*** or **********',
+    icon: Hash
+  },
+  {
+    id: 'partial',
+    label: 'Partial Masking',
+    shortLabel: 'Partial',
+    description: 'Partial Masking: Keep start/end characters visible (e.g. j***e@domain.com)',
+    example: 'j***e@domain.com, 4111-****-1234',
+    icon: EyeOff
+  },
+  {
+    id: 'hash-pseudonym',
+    label: 'Hash Pseudonym',
+    shortLabel: 'Hash',
+    description: 'Hash Pseudonym: Deterministic pseudonym preserving referential logs',
+    example: '[REDACTED_#3f8a] (same key = same hash)',
+    icon: Fingerprint
+  }
+]
 
 // All active rules combined
 const allRulesList = computed(() => {
@@ -227,17 +298,98 @@ const filteredMatches = computed(() => {
   return list
 })
 
-// Input line count
+// Filtered token map entries
+const filteredTokenMapEntries = computed(() => {
+  const entries = Object.entries(tokenMap.value)
+  if (!filterQuery.value.trim()) return entries
+  const q = filterQuery.value.toLowerCase().trim()
+  return entries.filter(([token, original]) =>
+    token.toLowerCase().includes(q) || original.toLowerCase().includes(q)
+  )
+})
+
+// Input & Output Line & Byte Counts
 const inputLineCount = computed(() => {
   if (!inputText.value) return 0
   return (inputText.value.match(/\n/g) || []).length + 1
 })
 
-// Output line count
 const outputLineCount = computed(() => {
   if (!outputText.value) return 0
   return (outputText.value.match(/\n/g) || []).length + 1
 })
+
+const inputByteSize = computed(() => new Blob([inputText.value]).size)
+const outputByteSize = computed(() => new Blob([outputText.value]).size)
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
+// In-Editor Search Matches Calculation
+const inputMatches = computed(() => {
+  if (!inputFindQuery.value.trim() || !inputText.value) return []
+  const matches: { index: number; line: number }[] = []
+  const flags = inputFindCase.value ? 'g' : 'gi'
+  try {
+    const escaped = inputFindQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(escaped, flags)
+    let m: RegExpExecArray | null
+    const lines = inputText.value.split('\n')
+    while ((m = regex.exec(inputText.value)) !== null) {
+      let charCount = 0
+      let lineNum = 1
+      for (let i = 0; i < lines.length; i++) {
+        if (charCount + lines[i].length + 1 > m.index) {
+          lineNum = i + 1
+          break
+        }
+        charCount += lines[i].length + 1
+      }
+      matches.push({ index: m.index, line: lineNum })
+      if (m.index === regex.lastIndex) regex.lastIndex++
+    }
+  } catch {
+    return []
+  }
+  return matches
+})
+
+const inputMatchCount = computed(() => inputMatches.value.length)
+
+const outputMatches = computed(() => {
+  if (!outputFindQuery.value.trim() || !outputText.value) return []
+  const matches: { index: number; line: number }[] = []
+  const flags = outputFindCase.value ? 'g' : 'gi'
+  try {
+    const escaped = outputFindQuery.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(escaped, flags)
+    let m: RegExpExecArray | null
+    const lines = outputText.value.split('\n')
+    while ((m = regex.exec(outputText.value)) !== null) {
+      let charCount = 0
+      let lineNum = 1
+      for (let i = 0; i < lines.length; i++) {
+        if (charCount + lines[i].length + 1 > m.index) {
+          lineNum = i + 1
+          break
+        }
+        charCount += lines[i].length + 1
+      }
+      matches.push({ index: m.index, line: lineNum })
+      if (m.index === regex.lastIndex) regex.lastIndex++
+    }
+  } catch {
+    return []
+  }
+  return matches
+})
+
+const outputMatchCount = computed(() => outputMatches.value.length)
 
 // Redact execution function
 function handleRedact() {
@@ -245,6 +397,7 @@ function handleRedact() {
     outputText.value = ''
     totalMatches.value = 0
     matchesList.value = []
+    tokenMap.value = {}
     executionTimeMs.value = 0
     return
   }
@@ -261,6 +414,7 @@ function handleRedact() {
   totalMatches.value = result.totalMatches
   matchesByCategory.value = result.matchesByCategory
   matchesList.value = result.matches
+  tokenMap.value = result.tokenMap || {}
   executionTimeMs.value = result.executionTimeMs
 
   // Save to snapshot store
@@ -271,9 +425,11 @@ function handleRedact() {
     preserveLength: preserveLength.value,
     activeRuleIds: activeRuleIds.value,
     customRules: customRules.value,
+    splitDirection: splitDirection.value,
     showStructural: showStructural.value,
     structuralPanelHeight: structuralPanelHeight.value,
-    isPanelMaximized: isPanelMaximized.value
+    isPanelMaximized: isPanelMaximized.value,
+    activeBottomTab: activeBottomTab.value
   })
 }
 
@@ -296,7 +452,7 @@ watch(
 
 // Sync panel states
 watch(
-  [showStructural, structuralPanelHeight, isPanelMaximized],
+  [splitDirection, showStructural, structuralPanelHeight, isPanelMaximized, activeBottomTab],
   () => {
     snapshotStore.setToolState('pii-redactor', {
       inputText: inputText.value,
@@ -305,12 +461,66 @@ watch(
       preserveLength: preserveLength.value,
       activeRuleIds: activeRuleIds.value,
       customRules: customRules.value,
+      splitDirection: splitDirection.value,
       showStructural: showStructural.value,
       structuralPanelHeight: structuralPanelHeight.value,
-      isPanelMaximized: isPanelMaximized.value
+      isPanelMaximized: isPanelMaximized.value,
+      activeBottomTab: activeBottomTab.value
     })
   }
 )
+
+// In-Editor Search Navigation
+function toggleInputFind() {
+  inputFindOpen.value = !inputFindOpen.value
+  if (inputFindOpen.value) {
+    outputFindOpen.value = false
+    nextTick(() => {
+      inputFindInputRef.value?.focus()
+      inputFindInputRef.value?.select()
+    })
+  }
+}
+
+function toggleOutputFind() {
+  outputFindOpen.value = !outputFindOpen.value
+  if (outputFindOpen.value) {
+    inputFindOpen.value = false
+    nextTick(() => {
+      outputFindInputRef.value?.focus()
+      outputFindInputRef.value?.select()
+    })
+  }
+}
+
+function navigateInputMatch(direction: 'next' | 'prev') {
+  if (inputMatchCount.value === 0) return
+  if (direction === 'next') {
+    inputFindIndex.value = inputFindIndex.value >= inputMatchCount.value ? 1 : inputFindIndex.value + 1
+  } else {
+    inputFindIndex.value = inputFindIndex.value <= 1 ? inputMatchCount.value : inputFindIndex.value - 1
+  }
+}
+
+function navigateOutputMatch(direction: 'next' | 'prev') {
+  if (outputMatchCount.value === 0) return
+  if (direction === 'next') {
+    outputFindIndex.value = outputFindIndex.value >= outputMatchCount.value ? 1 : outputFindIndex.value + 1
+  } else {
+    outputFindIndex.value = outputFindIndex.value <= 1 ? outputMatchCount.value : outputFindIndex.value - 1
+  }
+}
+
+// Click Category Pill in Stats Bar
+function handleCategoryPillClick(category: string) {
+  if (selectedFilterCategory.value === category && showStructural.value) {
+    selectedFilterCategory.value = 'all'
+  } else {
+    selectedFilterCategory.value = category
+    showStructural.value = true
+    activeBottomTab.value = 'entities'
+  }
+}
 
 // Fullscreen Toggle
 function toggleFullscreen() {
@@ -331,8 +541,20 @@ function handleFullscreenChange() {
 }
 
 function handleKeyDown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && isFullscreen.value) {
-    toggleFullscreen()
+  if (e.key === 'Escape') {
+    if (isFullscreen.value) {
+      toggleFullscreen()
+    } else if (inputFindOpen.value || outputFindOpen.value) {
+      inputFindOpen.value = false
+      outputFindOpen.value = false
+    }
+  } else if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F' || e.code === 'KeyF')) {
+    e.preventDefault()
+    if (activeEditorPane.value === 'output') {
+      toggleOutputFind()
+    } else {
+      toggleInputFind()
+    }
   }
 }
 
@@ -437,7 +659,7 @@ function handleAddCustomRule() {
     category: newRuleCategory.value,
     pattern: newRulePattern.value.trim(),
     flags: newRuleFlags.value || 'g',
-    replacement: newRuleReplacement.value.trim() || '[REDACTED]',
+    replacement: newRuleReplacement.value.trim() || '[CUSTOM_REDACTED]',
     enabled: true,
     isCustom: true,
     description: `User-defined custom regex rule`
@@ -472,6 +694,7 @@ function handleClear() {
   outputText.value = ''
   totalMatches.value = 0
   matchesList.value = []
+  tokenMap.value = {}
 }
 
 // Copy redacted output
@@ -488,7 +711,80 @@ async function copyOutput() {
   }
 }
 
-// Copy single entity original value
+// Copy input raw text
+async function copyInput() {
+  if (!inputText.value) return
+  const success = await securityStore.copyToClipboard(inputText.value, {
+    label: 'Raw Input Log'
+  })
+  if (success) {
+    isInputCopied.value = true
+    setTimeout(() => {
+      isInputCopied.value = false
+    }, 2000)
+  }
+}
+
+// Upload file directly into input editor
+async function handleUploadInput() {
+  const files = await openNativeFileDialog({
+    title: 'Open Log File - DevDot',
+    multiple: false,
+    filters: [
+      { name: 'Log & Text Files (*.log;*.txt;*.json)', extensions: ['log', 'txt', 'json'] },
+      { name: 'All Files (*.*)', extensions: ['*'] }
+    ]
+  })
+
+  if (files && files.length > 0) {
+    inputText.value = files[0].content
+  }
+}
+
+// Download redacted output as file
+async function downloadOutput() {
+  if (!outputText.value) return
+  const defaultFilename = `sanitized-log-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.log`
+  await saveNativeFileDialog(outputText.value, {
+    title: 'Save Sanitized Log - DevDot',
+    defaultPath: defaultFilename,
+    filters: [
+      { name: 'Log File (*.log)', extensions: ['log'] },
+      { name: 'Text File (*.txt)', extensions: ['txt'] },
+      { name: 'All Files (*.*)', extensions: ['*'] }
+    ]
+  })
+}
+
+// Export Token Mapping Vault as JSON File
+async function downloadTokenMap() {
+  if (!Object.keys(tokenMap.value).length) return
+  const jsonStr = JSON.stringify(tokenMap.value, null, 2)
+  const defaultFilename = `pii-token-vault-${new Date().toISOString().slice(0, 10)}.json`
+  await saveNativeFileDialog(jsonStr, {
+    title: 'Save De-anonymization Token Vault - DevDot',
+    defaultPath: defaultFilename,
+    filters: [
+      { name: 'JSON Vault (*.json)', extensions: ['json'] },
+      { name: 'All Files (*.*)', extensions: ['*'] }
+    ]
+  })
+}
+
+// Copy Token Map JSON to Clipboard
+async function copyTokenMap() {
+  if (!Object.keys(tokenMap.value).length) return
+  const jsonStr = JSON.stringify(tokenMap.value, null, 2)
+  const ok = await securityStore.copyToClipboard(jsonStr, { label: 'Token Map Vault' })
+  if (ok) {
+    isTokenMapCopied.value = true
+    setTimeout(() => {
+      isTokenMapCopied.value = false
+    }, 2000)
+  }
+}
+
+// Copy single entity original or masked value
 async function copyEntityValue(val: string, id: string) {
   try {
     await navigator.clipboard.writeText(val)
@@ -509,7 +805,7 @@ async function copyEntitiesAsMarkdown() {
     (m, idx) => `| ${idx + 1} | ${m.category.toUpperCase()} | ${m.ruleName} | Line ${m.line}:${m.column} | \`${m.maskedValue}\` | \`${m.originalValue}\` |`
   )
   const md = [header, ...rows].join('\n')
-  await navigator.clipboard.writeText(md)
+  await securityStore.copyToClipboard(md, { label: 'PII Entities Markdown' })
   isCopied.value = true
   setTimeout(() => {
     isCopied.value = false
@@ -525,25 +821,11 @@ async function copyEntitiesAsCsv() {
       `"${idx + 1}","${m.category}","${m.ruleName.replace(/"/g, '""')}","${m.line}","${m.column}","${m.maskedValue.replace(/"/g, '""')}","${m.originalValue.replace(/"/g, '""')}"`
   )
   const csv = [header, ...rows].join('\n')
-  await navigator.clipboard.writeText(csv)
+  await securityStore.copyToClipboard(csv, { label: 'PII Entities CSV' })
   isCopied.value = true
   setTimeout(() => {
     isCopied.value = false
   }, 2000)
-}
-
-// Download redacted output as file
-function downloadOutput() {
-  if (!outputText.value) return
-  const blob = new Blob([outputText.value], { type: 'text/plain;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `sanitized-log-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.log`
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
 }
 
 // Helper to get category icon component
@@ -555,8 +837,11 @@ function getCategoryIcon(category: PiiCategory) {
     case 'jwt': return Key
     case 'ip': return Globe
     case 'api-key': return Cpu
+    case 'cloud-secret': return Shield
+    case 'database-uri': return Database
     case 'phone': return Phone
     case 'ssn': return Hash
+    case 'identity-number': return Fingerprint
     case 'mac-address': return Layers
     default: return EyeOff
   }
@@ -571,8 +856,11 @@ function getCategoryBadgeClass(category: PiiCategory) {
     case 'jwt': return 'badge-jwt'
     case 'ip': return 'badge-ip'
     case 'api-key': return 'badge-api'
+    case 'cloud-secret': return 'badge-cloud'
+    case 'database-uri': return 'badge-db'
     case 'phone': return 'badge-phone'
     case 'ssn': return 'badge-ssn'
+    case 'identity-number': return 'badge-nik'
     case 'mac-address': return 'badge-mac'
     default: return 'badge-custom'
   }
@@ -600,41 +888,30 @@ onBeforeUnmount(() => {
     class="pii-redactor-container"
     :class="{ 'is-fullscreen': isFullscreen }"
   >
-    <!-- Top Toolbar Controls (Matching JSON Diff Toolbar Layout) -->
+    <!-- Compact Top Toolbar (Aligned with JSON Diff & Formatter) -->
     <div class="diff-toolbar">
       <div class="toolbar-left">
         <!-- Masking Mode Segment -->
         <div class="control-group">
-          <label class="control-label">Masking:</label>
-          <div class="segment-group">
-            <button
+          <label class="control-label">Mask:</label>
+          <div class="segment-group" role="group" aria-label="Masking Mode">
+            <M3Tooltip
               v-for="mode in MASKING_MODES"
               :key="mode.id"
-              type="button"
-              class="segment-btn"
-              :class="{ active: maskingMode === mode.id }"
-              :title="mode.description"
-              @click="maskingMode = mode.id"
+              :text="mode.description"
+              placement="bottom"
             >
-              <span>{{ mode.label }}</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Sample Presets Segment -->
-        <div class="control-group sample-presets-group">
-          <label class="control-label">Samples:</label>
-          <div class="segment-group">
-            <button
-              v-for="(sample, key) in SAMPLES"
-              :key="key"
-              type="button"
-              class="segment-btn"
-              :title="sample.desc"
-              @click="loadSample(key as string)"
-            >
-              {{ sample.label }}
-            </button>
+              <button
+                type="button"
+                class="segment-btn"
+                :class="{ active: maskingMode === mode.id }"
+                :aria-label="mode.label"
+                @click="maskingMode = mode.id"
+              >
+                <component :is="mode.icon" :size="12" />
+                <span>{{ mode.shortLabel }}</span>
+              </button>
+            </M3Tooltip>
           </div>
         </div>
 
@@ -649,92 +926,203 @@ onBeforeUnmount(() => {
           />
         </div>
 
-        <!-- Quick Toggles -->
-        <div class="toggle-control">
-          <M3Switch
-            v-model="preserveLength"
-            label="Preserve Length"
-          />
+        <div class="toolbar-divider"></div>
+
+        <!-- Sample Presets -->
+        <div class="samples-group">
+          <M3Tooltip
+            v-for="(sample, key) in SAMPLES"
+            :key="key"
+            :text="sample.desc"
+            placement="bottom"
+          >
+            <button
+              type="button"
+              class="pill-sample-btn"
+              @click="loadSample(key as string)"
+            >
+              <component :is="sample.icon" :size="12" />
+              <span>{{ sample.shortLabel }}</span>
+            </button>
+          </M3Tooltip>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- Split Orientation Toggle (Side-by-Side vs Stacked) -->
+        <div class="segment-group" role="group" aria-label="Split Direction">
+          <M3Tooltip text="Side-by-Side Split View" placement="bottom">
+            <button
+              type="button"
+              class="icon-toggle-btn"
+              :class="{ active: splitDirection === 'horizontal' }"
+              aria-label="Side-by-Side Split View"
+              @click="splitDirection = 'horizontal'"
+            >
+              <Columns2 :size="13" />
+            </button>
+          </M3Tooltip>
+          <M3Tooltip text="Stacked Split View" placement="bottom">
+            <button
+              type="button"
+              class="icon-toggle-btn"
+              :class="{ active: splitDirection === 'vertical' }"
+              aria-label="Stacked Split View"
+              @click="splitDirection = 'vertical'"
+            >
+              <Rows3 :size="13" />
+            </button>
+          </M3Tooltip>
+        </div>
+
+        <!-- Mobile Column Switcher (Visible on narrow viewports) -->
+        <div v-if="splitDirection === 'horizontal'" class="segment-group mobile-column-tabs">
+          <button
+            type="button"
+            class="segment-text-btn"
+            :class="{ active: mobileTab === 'both' }"
+            @click="mobileTab = 'both'"
+          >
+            Split
+          </button>
+          <button
+            type="button"
+            class="segment-text-btn"
+            :class="{ active: mobileTab === 'input' }"
+            @click="mobileTab = 'input'"
+          >
+            Input
+          </button>
+          <button
+            type="button"
+            class="segment-text-btn"
+            :class="{ active: mobileTab === 'output' }"
+            @click="mobileTab = 'output'"
+          >
+            Output
+          </button>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- Toggles: Preserve Length -->
+        <div class="toggles-group">
+          <M3Tooltip
+            :text="preserveLength ? 'Preserve Length: ON (Pad mask to original character count)' : 'Preserve Length: OFF'"
+            placement="bottom"
+          >
+            <button
+              type="button"
+              class="icon-toggle-btn"
+              :class="{ active: preserveLength }"
+              aria-label="Preserve Length"
+              @click="preserveLength = !preserveLength"
+            >
+              <Binary :size="13" />
+            </button>
+          </M3Tooltip>
         </div>
 
         <!-- Rules Config Toggle Button -->
-        <button
-          type="button"
-          class="mode-toggle-btn"
-          :class="{ active: isRulesDrawerOpen }"
-          @click="isRulesDrawerOpen = !isRulesDrawerOpen"
-        >
-          <SlidersHorizontal :size="14" />
-          <span>Rules ({{ activeRuleIds.length }}/{{ allRulesList.length }})</span>
-        </button>
+        <M3Tooltip text="Configure PII Detection Rules & Custom Regex" placement="bottom">
+          <button
+            type="button"
+            class="mode-badge-btn"
+            :class="{ active: isRulesDrawerOpen }"
+            aria-label="Toggle Rules Drawer"
+            @click="isRulesDrawerOpen = !isRulesDrawerOpen"
+          >
+            <SlidersHorizontal :size="13" />
+            <span>Rules ({{ activeRuleIds.length }}/{{ allRulesList.length }})</span>
+          </button>
+        </M3Tooltip>
       </div>
 
       <div class="toolbar-right">
-        <M3Button
-          variant="tonal"
-          title="Re-run PII Sanitization"
-          @click="handleRedact"
-        >
-          <template #icon>
-            <Play :size="14" />
-          </template>
-          Sanitize
-        </M3Button>
+        <!-- Re-run / Sanitize Action -->
+        <M3Tooltip text="Re-run PII Sanitization" placement="bottom">
+          <button
+            type="button"
+            class="icon-action-btn btn-primary-accent"
+            aria-label="Sanitize"
+            @click="handleRedact"
+          >
+            <Play :size="13" />
+          </button>
+        </M3Tooltip>
 
-        <M3Button
-          variant="tonal"
-          title="Copy Sanitized Log Output"
-          :disabled="!outputText"
-          @click="copyOutput"
-        >
-          <template #icon>
-            <component :is="isCopied ? Check : Copy" :size="14" />
-          </template>
-          {{ isCopied ? 'Copied' : 'Copy Output' }}
-        </M3Button>
+        <!-- Copy Output -->
+        <M3Tooltip :text="isCopied ? 'Copied Output to Clipboard!' : 'Copy Sanitized Log Output'" placement="bottom">
+          <button
+            type="button"
+            class="icon-action-btn"
+            :class="{ active: isCopied }"
+            :disabled="!outputText"
+            aria-label="Copy Sanitized Output"
+            @click="copyOutput"
+          >
+            <component :is="isCopied ? Check : Copy" :size="13" />
+          </button>
+        </M3Tooltip>
 
-        <M3Button
-          variant="tonal"
-          title="Download Sanitized Log File"
-          :disabled="!outputText"
-          @click="downloadOutput"
-        >
-          <template #icon>
-            <Download :size="14" />
-          </template>
-          Download .log
-        </M3Button>
+        <!-- Open / Upload File -->
+        <M3Tooltip text="Open Log File (.log, .txt, .json)" placement="bottom">
+          <button
+            type="button"
+            class="icon-action-btn"
+            aria-label="Open Log File"
+            @click="handleUploadInput"
+          >
+            <Upload :size="13" />
+          </button>
+        </M3Tooltip>
 
-        <M3Button
-          variant="outlined"
-          title="Clear Inputs"
-          @click="handleClear"
-        >
-          <template #icon>
-            <RotateCcw :size="14" />
-          </template>
-          Clear
-        </M3Button>
+        <!-- Download .log -->
+        <M3Tooltip text="Download Sanitized Log File" placement="bottom">
+          <button
+            type="button"
+            class="icon-action-btn"
+            :disabled="!outputText"
+            aria-label="Download Sanitized Log"
+            @click="downloadOutput"
+          >
+            <Download :size="13" />
+          </button>
+        </M3Tooltip>
 
-        <!-- Fullscreen / Maximize Toggle Button -->
-        <M3Button
-          :variant="isFullscreen ? 'filled' : 'tonal'"
-          :title="isFullscreen ? 'Exit Fullscreen (Esc)' : 'Enter Fullscreen Mode'"
-          class="fullscreen-toggle-btn"
-          @click="toggleFullscreen"
-        >
-          <template #icon>
-            <component :is="isFullscreen ? Minimize2 : Maximize2" :size="14" />
-          </template>
-          {{ isFullscreen ? 'Exit Fullscreen' : 'Fullscreen' }}
-        </M3Button>
+        <!-- Clear -->
+        <M3Tooltip text="Clear Inputs and Output" placement="bottom">
+          <button
+            type="button"
+            class="icon-action-btn btn-danger-hover"
+            aria-label="Clear Inputs"
+            @click="handleClear"
+          >
+            <RotateCcw :size="13" />
+          </button>
+        </M3Tooltip>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- Fullscreen Toggle Button -->
+        <M3Tooltip :text="isFullscreen ? 'Exit Fullscreen (Esc)' : 'Enter Fullscreen Mode'" placement="bottom">
+          <button
+            type="button"
+            class="icon-action-btn fullscreen-btn"
+            :class="{ active: isFullscreen }"
+            aria-label="Toggle Fullscreen"
+            @click="toggleFullscreen"
+          >
+            <component :is="isFullscreen ? Minimize2 : Maximize2" :size="13" />
+          </button>
+        </M3Tooltip>
       </div>
     </div>
 
-    <!-- Summary Stats Bar (Matching JSON Diff Stats Bar Layout) -->
+    <!-- Summary Stats Bar (Aligned with JSON Diff) -->
     <div class="diff-stats-bar">
       <div class="stats-left">
-        <!-- Match / Equality Badge -->
+        <!-- Match / Status Badge -->
         <div
           class="status-badge"
           :class="totalMatches === 0 ? 'badge-identical' : 'badge-different'"
@@ -743,35 +1131,49 @@ onBeforeUnmount(() => {
           <span>{{ totalMatches === 0 ? 'Clean / No PII' : `${totalMatches} PII Redacted` }}</span>
         </div>
 
-        <!-- Breakdown Category Pills -->
+        <!-- Clickable Category Pills -->
         <template v-for="(count, cat) in matchesByCategory" :key="cat">
-          <div
+          <button
             v-if="count > 0"
-            class="stat-pill"
-            :class="`stat-${cat}`"
-            :title="`${count} ${cat} entities detected`"
+            type="button"
+            class="stat-pill clickable-pill"
+            :class="[`stat-${cat}`, { 'is-active-filter': selectedFilterCategory === cat }]"
+            :title="`Click to filter breakdown by ${cat}`"
+            @click="handleCategoryPillClick(cat as string)"
           >
             <component :is="getCategoryIcon(cat as PiiCategory)" :size="12" />
             <span>{{ count }} {{ cat }}</span>
-          </div>
+          </button>
         </template>
 
-        <!-- Total Changes Meta -->
+        <!-- Meta Summary Info -->
         <span class="stat-meta">
           Total entities: <strong>{{ totalMatches }}</strong> ({{ inputLineCount }} lines)
         </span>
       </div>
 
       <div class="stats-right">
-        <!-- Structural / Entity Inspector Toggle Button -->
+        <!-- Entities Breakdown Panel Toggle -->
         <button
           type="button"
           class="structural-toggle-btn"
-          :class="{ active: showStructural }"
-          @click="showStructural = !showStructural"
+          :class="{ active: showStructural && activeBottomTab === 'entities' }"
+          @click="showStructural = true; activeBottomTab = 'entities'"
         >
-          <Table :size="14" />
+          <Table :size="13" />
           <span>Detected Entities ({{ matchesList.length }})</span>
+        </button>
+
+        <!-- De-anonymization Vault Toggle -->
+        <button
+          type="button"
+          class="structural-toggle-btn"
+          :class="{ active: showStructural && activeBottomTab === 'vault' }"
+          :title="`View deterministic token hash map (${Object.keys(tokenMap).length} tokens)`"
+          @click="showStructural = true; activeBottomTab = 'vault'"
+        >
+          <Fingerprint :size="13" />
+          <span>Token Vault ({{ Object.keys(tokenMap).length }})</span>
         </button>
 
         <span class="privacy-note">
@@ -785,7 +1187,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- Rules Configuration Accordion / Drawer -->
+    <!-- Rules Configuration Drawer / Accordion -->
     <transition name="expand">
       <div v-if="isRulesDrawerOpen" class="rules-manager-panel">
         <div class="rules-header">
@@ -869,88 +1271,297 @@ onBeforeUnmount(() => {
       </div>
     </transition>
 
-    <!-- MAIN REDACTOR WORKSPACE (Split side-by-side like JSON Diff) -->
+    <!-- MAIN REDACTOR WORKSPACE WITH DRAGGABLE SPLITPANE -->
     <div class="diff-workspace">
-      <div class="edit-mode-grid">
-        <!-- Left Panel: Raw Input -->
-        <div class="edit-panel">
-          <div class="panel-header">
-            <div class="panel-title-group">
-              <FileText :size="14" />
-              <span class="panel-title">Raw Log / Text Input</span>
-              <span class="line-badge">{{ inputLineCount }} lines</span>
-            </div>
-            <div class="panel-header-actions">
-              <button
-                v-if="inputText"
-                type="button"
-                class="panel-mini-btn"
-                title="Clear input"
-                @click="handleClear"
-              >
-                Clear
-              </button>
-            </div>
-          </div>
-          <div class="editor-inner-wrap">
-            <CodeEditor
-              v-model="inputText"
-              language="text"
-              placeholder="Paste server logs, JSON dumps, curl headers, or confidential data here to redact..."
-              height="100%"
-            />
-          </div>
-        </div>
+      <SplitPane
+        :direction="splitDirection"
+        :initial-split="50"
+        class="redactor-split-pane"
+        :class="`mobile-${mobileTab}`"
+      >
+        <template #pane-1-tab-label>
+          Raw Input
+        </template>
+        <template #pane-2-tab-label>
+          Sanitized Output
+        </template>
 
-        <!-- Right Panel: Sanitized Output -->
-        <div class="edit-panel">
-          <div class="panel-header">
-            <div class="panel-title-group">
-              <EyeOff :size="14" class="sanitized-icon" />
-              <span class="panel-title">Sanitized & Redacted Log</span>
-              <span class="line-badge">{{ outputLineCount }} lines</span>
-              <span v-if="totalMatches > 0" class="matches-badge">
-                {{ totalMatches }} PII Redacted
-              </span>
-              <span v-else class="clean-badge">
-                0 PII Detected
-              </span>
-            </div>
-            <div class="panel-header-actions">
-              <button
-                type="button"
-                class="panel-mini-btn"
-                :disabled="!outputText"
-                title="Copy Redacted Output"
-                @click="copyOutput"
-              >
-                {{ isCopied ? 'Copied' : 'Copy' }}
-              </button>
-              <button
-                type="button"
-                class="panel-mini-btn"
-                :disabled="!outputText"
-                title="Download .log file"
-                @click="downloadOutput"
-              >
-                Download
-              </button>
-            </div>
-          </div>
-          <div class="editor-inner-wrap">
-            <CodeEditor
-              v-model="outputText"
-              language="text"
-              placeholder="Sanitized and redacted output will appear here in real-time..."
-              height="100%"
-            />
-          </div>
-        </div>
-      </div>
+        <!-- INPUT PANE (Left / Top) -->
+        <template #pane-1>
+          <div
+            class="pane-wrapper"
+            :class="{ hidden: mobileTab === 'output' }"
+            @click="activeEditorPane = 'input'"
+          >
+            <!-- Pane Header -->
+            <div class="pane-header">
+              <div class="pane-header-left">
+                <FileText :size="14" class="primary-icon" />
+                <span class="pane-title">Raw Log / Text Input</span>
+                <span class="size-tag">{{ formatBytes(inputByteSize) }}</span>
+                <span class="line-badge">{{ inputLineCount }} lines</span>
+              </div>
 
-      <!-- STRUCTURAL RESIZE SPLITTER HANDLE (Matching JSON Diff) -->
+              <div class="pane-header-right">
+                <!-- Find Toggle in Header -->
+                <M3Tooltip text="Find in Input (Ctrl+F)" placement="top">
+                  <button
+                    type="button"
+                    class="col-find-toggle-btn"
+                    :class="{ active: inputFindOpen }"
+                    aria-label="Find in Input"
+                    @click="toggleInputFind"
+                  >
+                    <Search :size="13" />
+                  </button>
+                </M3Tooltip>
+
+                <!-- Copy Input -->
+                <M3Tooltip :text="isInputCopied ? 'Copied!' : 'Copy Input'" placement="top">
+                  <button
+                    type="button"
+                    class="pane-icon-btn"
+                    :class="{ active: isInputCopied }"
+                    aria-label="Copy Input"
+                    @click="copyInput"
+                  >
+                    <component :is="isInputCopied ? Check : Copy" :size="13" />
+                  </button>
+                </M3Tooltip>
+
+                <!-- Open / Upload File -->
+                <M3Tooltip text="Open Log / Text File" placement="top">
+                  <button
+                    type="button"
+                    class="pane-icon-btn"
+                    aria-label="Open File"
+                    @click="handleUploadInput"
+                  >
+                    <Upload :size="13" />
+                  </button>
+                </M3Tooltip>
+
+                <!-- Clear Input -->
+                <M3Tooltip text="Clear Input" placement="top">
+                  <button
+                    type="button"
+                    class="pane-icon-btn btn-danger-hover"
+                    aria-label="Clear Input"
+                    @click="handleClear"
+                  >
+                    <RotateCcw :size="13" />
+                  </button>
+                </M3Tooltip>
+              </div>
+            </div>
+
+            <!-- In-Editor Find Bar for Input -->
+            <div v-if="inputFindOpen" class="column-find-bar">
+              <div class="find-input-wrap">
+                <Search :size="12" class="find-icon" />
+                <input
+                  ref="inputFindInputRef"
+                  v-model="inputFindQuery"
+                  type="text"
+                  class="find-input"
+                  placeholder="Find in Raw Input..."
+                  spellcheck="false"
+                  @keydown.enter.exact="navigateInputMatch('next')"
+                  @keydown.shift.enter="navigateInputMatch('prev')"
+                  @keydown.esc="inputFindOpen = false"
+                />
+                <span v-if="inputFindQuery" class="find-count">
+                  {{ inputMatchCount > 0 ? `${inputFindIndex || 1} of ${inputMatchCount}` : '0 results' }}
+                </span>
+              </div>
+              <button
+                type="button"
+                class="find-opt-btn"
+                :class="{ active: inputFindCase }"
+                title="Match Case"
+                @click="inputFindCase = !inputFindCase"
+              >
+                Aa
+              </button>
+              <button
+                type="button"
+                class="find-nav-btn"
+                title="Previous Match (Shift+Enter)"
+                :disabled="inputMatchCount === 0"
+                @click="navigateInputMatch('prev')"
+              >
+                <ChevronUp :size="13" />
+              </button>
+              <button
+                type="button"
+                class="find-nav-btn"
+                title="Next Match (Enter)"
+                :disabled="inputMatchCount === 0"
+                @click="navigateInputMatch('next')"
+              >
+                <ChevronDown :size="13" />
+              </button>
+              <button
+                type="button"
+                class="find-close-btn"
+                title="Close (Esc)"
+                @click="inputFindOpen = false"
+              >
+                ✕
+              </button>
+            </div>
+
+            <!-- Code Editor Component -->
+            <div class="editor-inner-wrap">
+              <CodeEditor
+                ref="inputEditorRef"
+                v-model="inputText"
+                language="text"
+                placeholder="Paste server logs, JSON dumps, curl headers, or confidential data here to redact..."
+                height="100%"
+              />
+            </div>
+          </div>
+        </template>
+
+        <!-- SANITIZED OUTPUT PANE (Right / Bottom) -->
+        <template #pane-2>
+          <div
+            class="pane-wrapper"
+            :class="{ hidden: mobileTab === 'input' }"
+            @click="activeEditorPane = 'output'"
+          >
+            <!-- Pane Header -->
+            <div class="pane-header">
+              <div class="pane-header-left">
+                <EyeOff :size="14" class="sanitized-icon" />
+                <span class="pane-title">Sanitized & Redacted Log</span>
+                <span class="size-tag">{{ formatBytes(outputByteSize) }}</span>
+                <span class="line-badge">{{ outputLineCount }} lines</span>
+                <span v-if="totalMatches > 0" class="matches-badge">
+                  {{ totalMatches }} Redacted
+                </span>
+                <span v-else class="clean-badge">
+                  0 PII
+                </span>
+              </div>
+
+              <div class="pane-header-right">
+                <!-- Find Toggle in Output Header -->
+                <M3Tooltip text="Find in Output (Ctrl+F)" placement="top">
+                  <button
+                    type="button"
+                    class="col-find-toggle-btn"
+                    :class="{ active: outputFindOpen }"
+                    aria-label="Find in Output"
+                    @click="toggleOutputFind"
+                  >
+                    <Search :size="13" />
+                  </button>
+                </M3Tooltip>
+
+                <!-- Copy Output -->
+                <M3Tooltip :text="isCopied ? 'Copied!' : 'Copy Sanitized Log'" placement="top">
+                  <button
+                    type="button"
+                    class="pane-icon-btn"
+                    :class="{ active: isCopied }"
+                    :disabled="!outputText"
+                    aria-label="Copy Output"
+                    @click="copyOutput"
+                  >
+                    <component :is="isCopied ? Check : Copy" :size="13" />
+                  </button>
+                </M3Tooltip>
+
+                <!-- Download .log -->
+                <M3Tooltip text="Download Sanitized Log" placement="top">
+                  <button
+                    type="button"
+                    class="pane-icon-btn"
+                    :disabled="!outputText"
+                    aria-label="Download File"
+                    @click="downloadOutput"
+                  >
+                    <Download :size="13" />
+                  </button>
+                </M3Tooltip>
+              </div>
+            </div>
+
+            <!-- In-Editor Find Bar for Output -->
+            <div v-if="outputFindOpen" class="column-find-bar">
+              <div class="find-input-wrap">
+                <Search :size="12" class="find-icon" />
+                <input
+                  ref="outputFindInputRef"
+                  v-model="outputFindQuery"
+                  type="text"
+                  class="find-input"
+                  placeholder="Find in Sanitized Output..."
+                  spellcheck="false"
+                  @keydown.enter.exact="navigateOutputMatch('next')"
+                  @keydown.shift.enter="navigateOutputMatch('prev')"
+                  @keydown.esc="outputFindOpen = false"
+                />
+                <span v-if="outputFindQuery" class="find-count">
+                  {{ outputMatchCount > 0 ? `${outputFindIndex || 1} of ${outputMatchCount}` : '0 results' }}
+                </span>
+              </div>
+              <button
+                type="button"
+                class="find-opt-btn"
+                :class="{ active: outputFindCase }"
+                title="Match Case"
+                @click="outputFindCase = !outputFindCase"
+              >
+                Aa
+              </button>
+              <button
+                type="button"
+                class="find-nav-btn"
+                title="Previous Match (Shift+Enter)"
+                :disabled="outputMatchCount === 0"
+                @click="navigateOutputMatch('prev')"
+              >
+                <ChevronUp :size="13" />
+              </button>
+              <button
+                type="button"
+                class="find-nav-btn"
+                title="Next Match (Enter)"
+                :disabled="outputMatchCount === 0"
+                @click="navigateOutputMatch('next')"
+              >
+                <ChevronDown :size="13" />
+              </button>
+              <button
+                type="button"
+                class="find-close-btn"
+                title="Close (Esc)"
+                @click="outputFindOpen = false"
+              >
+                ✕
+              </button>
+            </div>
+
+            <!-- Code Editor Component -->
+            <div class="editor-inner-wrap">
+              <CodeEditor
+                ref="outputEditorRef"
+                v-model="outputText"
+                language="text"
+                placeholder="Sanitized and redacted output will appear here in real-time..."
+                height="100%"
+              />
+            </div>
+          </div>
+        </template>
+      </SplitPane>
+
+      <!-- STRUCTURAL RESIZE SPLITTER HANDLE -->
       <div
-        v-if="showStructural && matchesList.length && !isPanelMaximized"
+        v-if="showStructural && (matchesList.length || Object.keys(tokenMap).length) && !isPanelMaximized"
         class="structural-resize-handle"
         :class="{ 'is-dragging': isPanelDragging }"
         title="Drag up/down to adjust breakdown height (Double click to maximize)"
@@ -961,19 +1572,39 @@ onBeforeUnmount(() => {
         <div class="resize-handle-bar"></div>
       </div>
 
-      <!-- STRUCTURAL ENTITY BREAKDOWN PANEL (Matching JSON Diff) -->
+      <!-- BOTTOM STRUCTURAL / VAULT PANEL -->
       <div
-        v-if="showStructural && matchesList.length"
+        v-if="showStructural && (matchesList.length || Object.keys(tokenMap).length)"
         class="structural-panel"
         :class="{ 'is-maximized': isPanelMaximized }"
         :style="{ height: isPanelMaximized ? undefined : `${structuralPanelHeight}px` }"
       >
-        <!-- Header -->
+        <!-- Header with Tabs -->
         <div class="structural-header">
           <div class="header-left">
-            <Layers :size="15" class="primary-icon" />
-            <span class="sec-title">Detected PII Entity Breakdown</span>
-            <span class="count-tag">{{ matchesList.length }} Entities</span>
+            <!-- Tabs Switcher -->
+            <div class="inspector-tab-group">
+              <button
+                type="button"
+                class="inspector-tab-btn"
+                :class="{ active: activeBottomTab === 'entities' }"
+                @click="activeBottomTab = 'entities'"
+              >
+                <Layers :size="14" />
+                <span>Detected Entities</span>
+                <span class="count-tag">{{ matchesList.length }}</span>
+              </button>
+              <button
+                type="button"
+                class="inspector-tab-btn"
+                :class="{ active: activeBottomTab === 'vault' }"
+                @click="activeBottomTab = 'vault'"
+              >
+                <Fingerprint :size="14" />
+                <span>De-anonymization Vault</span>
+                <span class="count-tag">{{ Object.keys(tokenMap).length }}</span>
+              </button>
+            </div>
 
             <!-- Quick Height Presets -->
             <div class="panel-presets-group">
@@ -1008,7 +1639,7 @@ onBeforeUnmount(() => {
           </div>
 
           <div class="header-right">
-            <!-- Sizing buttons: Increase & Decrease -->
+            <!-- Sizing buttons: Increase, Decrease & Maximize -->
             <div class="panel-action-group">
               <button
                 type="button"
@@ -1049,7 +1680,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- Filter & Search Toolbar (Matching JSON Diff Subbar) -->
+        <!-- Filter & Search Subbar -->
         <div class="structural-subbar">
           <div class="subbar-left">
             <!-- Search input -->
@@ -1059,7 +1690,7 @@ onBeforeUnmount(() => {
                 v-model="filterQuery"
                 type="text"
                 class="search-input"
-                placeholder="Filter by entity, category or value..."
+                :placeholder="activeBottomTab === 'entities' ? 'Filter by rule, category or value...' : 'Filter token vault...'"
                 spellcheck="false"
               />
               <button
@@ -1072,8 +1703,8 @@ onBeforeUnmount(() => {
               </button>
             </div>
 
-            <!-- Filter Type Chips -->
-            <div class="filter-chips">
+            <!-- Filter Category Chips (in Entities tab) -->
+            <div v-if="activeBottomTab === 'entities'" class="filter-chips">
               <button
                 type="button"
                 class="filter-chip"
@@ -1094,43 +1725,80 @@ onBeforeUnmount(() => {
                 </button>
               </template>
             </div>
+
+            <!-- Reveal Secrets Toggle -->
+            <button
+              type="button"
+              class="subbar-btn"
+              :class="{ active: revealSecrets }"
+              title="Toggle reveal plaintext sensitive values"
+              @click="revealSecrets = !revealSecrets"
+            >
+              <component :is="revealSecrets ? Lock : EyeOff" :size="12" />
+              <span>{{ revealSecrets ? 'Hide Secrets' : 'Reveal Secrets' }}</span>
+            </button>
           </div>
 
           <div class="subbar-right">
-            <!-- Export Options -->
-            <button
-              type="button"
-              class="subbar-btn"
-              title="Copy as Markdown Table"
-              @click="copyEntitiesAsMarkdown"
-            >
-              <Copy :size="12" />
-              <span>Copy MD</span>
-            </button>
-            <button
-              type="button"
-              class="subbar-btn"
-              title="Copy as CSV"
-              @click="copyEntitiesAsCsv"
-            >
-              <FileSpreadsheet :size="12" />
-              <span>Copy CSV</span>
-            </button>
+            <!-- Entities Tab Exports -->
+            <template v-if="activeBottomTab === 'entities'">
+              <button
+                type="button"
+                class="subbar-btn"
+                title="Copy as Markdown Table"
+                @click="copyEntitiesAsMarkdown"
+              >
+                <Copy :size="12" />
+                <span>Copy MD</span>
+              </button>
+              <button
+                type="button"
+                class="subbar-btn"
+                title="Copy as CSV"
+                @click="copyEntitiesAsCsv"
+              >
+                <FileSpreadsheet :size="12" />
+                <span>Copy CSV</span>
+              </button>
+            </template>
+
+            <!-- Vault Tab Exports -->
+            <template v-else>
+              <button
+                type="button"
+                class="subbar-btn"
+                :class="{ active: isTokenMapCopied }"
+                title="Copy Token Map JSON"
+                @click="copyTokenMap"
+              >
+                <component :is="isTokenMapCopied ? Check : Copy" :size="12" />
+                <span>{{ isTokenMapCopied ? 'Copied' : 'Copy JSON' }}</span>
+              </button>
+              <button
+                type="button"
+                class="subbar-btn"
+                title="Save Token Map as JSON File"
+                @click="downloadTokenMap"
+              >
+                <Download :size="12" />
+                <span>Save Vault .json</span>
+              </button>
+            </template>
           </div>
         </div>
 
-        <!-- Table View -->
-        <div class="structural-table-container">
+        <!-- TAB 1: DETECTED ENTITIES TABLE -->
+        <div v-if="activeBottomTab === 'entities'" class="structural-table-container">
           <table class="structural-table">
             <thead>
               <tr>
                 <th style="width: 40px;">#</th>
-                <th style="width: 120px;">Category</th>
+                <th style="width: 130px;">Category</th>
                 <th style="width: 180px;">Rule Name</th>
-                <th style="width: 110px;">Location</th>
+                <th style="width: 100px;">Location</th>
                 <th style="width: 220px;">Masked Output</th>
                 <th>Original Value (Confidential Preview)</th>
-                <th style="width: 70px; text-align: right;">Action</th>
+                <th style="width: 80px; text-align: right;">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -1156,7 +1824,9 @@ onBeforeUnmount(() => {
                 </td>
                 <td class="original-cell">
                   <div class="original-val-wrapper">
-                    <code class="original-preview">{{ item.originalValue }}</code>
+                    <code class="original-preview" :class="{ blurred: !revealSecrets }">
+                      {{ revealSecrets ? item.originalValue : '••••••••••••' }}
+                    </code>
                     <button
                       type="button"
                       class="copy-path-btn"
@@ -1182,6 +1852,63 @@ onBeforeUnmount(() => {
               <tr v-if="!filteredMatches.length">
                 <td colspan="7" class="empty-struct-search">
                   No detected entities match your search filter.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- TAB 2: DE-ANONYMIZATION TOKEN VAULT TABLE -->
+        <div v-else class="structural-table-container">
+          <table class="structural-table">
+            <thead>
+              <tr>
+                <th style="width: 50px;">#</th>
+                <th style="width: 320px;">Pseudonym Token / Redacted Hash</th>
+                <th>Original Sensitive Plaintext</th>
+                <th style="width: 140px; text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="([token, original], idx) in filteredTokenMapEntries"
+                :key="token"
+                class="clickable-struct-row"
+              >
+                <td class="idx-col">{{ idx + 1 }}</td>
+                <td class="masked-cell">
+                  <code class="masked-code token-vault-key">{{ token }}</code>
+                </td>
+                <td class="original-cell">
+                  <div class="original-val-wrapper">
+                    <code class="original-preview" :class="{ blurred: !revealSecrets }">
+                      {{ revealSecrets ? original : '••••••••••••' }}
+                    </code>
+                    <button
+                      type="button"
+                      class="copy-path-btn"
+                      title="Copy original value"
+                      @click="copyEntityValue(original, `orig-${idx}`)"
+                    >
+                      <component :is="copiedMatchId === `orig-${idx}` ? Check : Copy" :size="11" />
+                    </button>
+                  </div>
+                </td>
+                <td class="action-cell">
+                  <button
+                    type="button"
+                    class="jump-pill-btn"
+                    title="Copy Token"
+                    @click="copyEntityValue(token, `tok-${idx}`)"
+                  >
+                    {{ copiedMatchId === `tok-${idx}` ? 'Copied' : 'Copy Token' }}
+                  </button>
+                </td>
+              </tr>
+
+              <tr v-if="!filteredTokenMapEntries.length">
+                <td colspan="4" class="empty-struct-search">
+                  No token entries match your filter or no tokens have been generated yet.
                 </td>
               </tr>
             </tbody>
@@ -1252,7 +1979,7 @@ onBeforeUnmount(() => {
   width: 100%;
   flex: 1;
   min-height: 0;
-  gap: 10px;
+  gap: 8px;
   position: relative;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -1267,13 +1994,13 @@ onBeforeUnmount(() => {
   max-width: 100vw;
   max-height: 100vh;
   background-color: var(--md-sys-color-surface);
-  padding: 1rem 1.25rem;
+  padding: 0.75rem 1rem;
   box-sizing: border-box;
   border-radius: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .pii-redactor-container.is-fullscreen .diff-workspace {
@@ -1289,12 +2016,12 @@ onBeforeUnmount(() => {
   flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  min-height: 36px;
+  gap: 0.375rem;
+  min-height: 32px;
   background: var(--md-sys-color-surface-container);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--md-sys-shape-corner-small);
-  padding: 0.25rem 0.625rem;
+  border-radius: 8px;
+  padding: 0.2rem 0.5rem;
   overflow-x: auto;
 }
 
@@ -1303,43 +2030,54 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  gap: 0.5rem;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--md-sys-color-outline-variant);
+  margin: 0 2px;
+  opacity: 0.6;
   flex-shrink: 0;
 }
 
 .control-group {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.35rem;
 }
 
 .control-label {
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
 }
 
 .segment-group {
   display: inline-flex;
+  align-items: center;
   background: var(--md-sys-color-surface-container-high);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 2px;
   gap: 2px;
 }
 
 .segment-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
   border: none;
   background: transparent;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 500;
-  padding: 4px 9px;
-  border-radius: 6px;
+  padding: 2px 7px;
+  border-radius: 4px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
@@ -1353,129 +2091,291 @@ onBeforeUnmount(() => {
   background: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
   font-weight: 600;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-.custom-mask-input-wrap {
+.icon-toggle-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-.custom-mask-field {
-  background: var(--md-sys-color-surface-container-high);
-  border: 1px solid var(--md-sys-color-outline-variant);
+.icon-toggle-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
-  font-family: monospace;
+}
+
+.icon-toggle-btn.active {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.segment-text-btn {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
   font-size: 11px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  width: 110px;
-  outline: none;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 
-.custom-mask-field:focus {
-  border-color: var(--md-sys-color-primary);
+.segment-text-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
 }
 
-.mode-toggle-btn {
+.segment-text-btn.active {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  font-weight: 600;
+}
+
+.samples-group,
+.toggles-group {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  background: var(--md-sys-color-surface-container-high);
+  gap: 3px;
+}
+
+.pill-sample-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border: 1px solid var(--md-sys-color-outline-variant);
-  color: var(--md-sys-color-on-surface);
-  font-size: 11.5px;
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 11px;
   font-weight: 500;
-  padding: 4px 10px;
-  border-radius: 8px;
+  padding: 2px 6px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
 
-.mode-toggle-btn.active {
+.pill-sample-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  border-color: var(--md-sys-color-outline);
+}
+
+.mode-badge-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  height: 26px;
+}
+
+.mode-badge-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.mode-badge-btn.active {
   background: var(--md-sys-color-primary-container);
   color: var(--md-sys-color-on-primary-container);
   border-color: var(--md-sys-color-primary);
 }
 
-.fullscreen-toggle-btn {
-  font-weight: 600;
+.icon-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  background: var(--md-sys-color-surface-container-high);
+  color: var(--md-sys-color-on-surface-variant);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.icon-action-btn:hover:not(:disabled) {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
+  border-color: var(--md-sys-color-outline);
+}
+
+.icon-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.icon-action-btn.active {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
+}
+
+.btn-primary-accent {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-primary);
+}
+
+.btn-primary-accent:hover:not(:disabled) {
+  background: var(--md-sys-color-primary);
+  opacity: 0.9;
+  color: var(--md-sys-color-on-primary);
+}
+
+.btn-danger-hover:hover:not(:disabled) {
+  color: var(--md-sys-color-error);
+  border-color: var(--md-sys-color-error);
+}
+
+.fullscreen-btn {
+  border-color: var(--md-sys-color-outline-variant);
+}
+
+.custom-mask-input-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.custom-mask-field {
+  background: var(--md-sys-color-surface-container-highest);
+  border: 1px solid var(--md-sys-color-outline);
+  color: var(--md-sys-color-on-surface);
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  outline: none;
+  width: 90px;
+  height: 24px;
+}
+
+.mobile-column-tabs {
+  display: none;
 }
 
 /* Stats Bar */
 .diff-stats-bar {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   background: var(--md-sys-color-surface-container-low);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 8px;
-  padding: 6px 12px;
+  border-radius: var(--md-sys-shape-corner-small);
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  overflow-x: auto;
 }
 
 .stats-left,
 .stats-right {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  gap: 0.5rem;
+  flex-shrink: 0;
 }
 
 .status-badge {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  font-weight: 700;
-  padding: 3px 9px;
-  border-radius: 6px;
+  gap: 5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 0.75rem;
 }
 
 .badge-identical {
-  background: rgba(34, 197, 94, 0.15);
-  color: #22c55e;
-  border: 1px solid rgba(34, 197, 94, 0.3);
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
 }
 
 .badge-different {
   background: rgba(239, 68, 68, 0.15);
   color: #ef4444;
-  border: 1px solid rgba(239, 68, 68, 0.3);
 }
 
 .stat-pill {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
   padding: 2px 7px;
-  border-radius: 6px;
-  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 500;
 }
 
+.clickable-pill {
+  background: transparent;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clickable-pill:hover {
+  transform: translateY(-1px);
+}
+
+.clickable-pill.is-active-filter {
+  outline: 2px solid var(--md-sys-color-primary);
+  font-weight: 700;
+}
+
+.stat-email { background: rgba(59, 130, 246, 0.12); color: #3b82f6; border-color: rgba(59, 130, 246, 0.3); }
+.stat-password { background: rgba(239, 68, 68, 0.12); color: #ef4444; border-color: rgba(239, 68, 68, 0.3); }
+.stat-credit-card { background: rgba(245, 158, 11, 0.12); color: #f59e0b; border-color: rgba(245, 158, 11, 0.3); }
+.stat-jwt { background: rgba(168, 85, 247, 0.12); color: #a855f7; border-color: rgba(168, 85, 247, 0.3); }
+.stat-ip { background: rgba(6, 182, 212, 0.12); color: #06b6d4; border-color: rgba(6, 182, 212, 0.3); }
+.stat-api-key { background: rgba(236, 72, 153, 0.12); color: #ec4899; border-color: rgba(236, 72, 153, 0.3); }
+.stat-cloud-secret { background: rgba(249, 115, 22, 0.12); color: #f97316; border-color: rgba(249, 115, 22, 0.3); }
+.stat-database-uri { background: rgba(139, 92, 246, 0.12); color: #8b5cf6; border-color: rgba(139, 92, 246, 0.3); }
+.stat-phone { background: rgba(16, 185, 129, 0.12); color: #10b981; border-color: rgba(16, 185, 129, 0.3); }
+.stat-ssn { background: rgba(234, 88, 12, 0.12); color: #ea580c; border-color: rgba(234, 88, 12, 0.3); }
+.stat-identity-number { background: rgba(14, 165, 233, 0.12); color: #0ea5e9; border-color: rgba(14, 165, 233, 0.3); }
+.stat-mac-address { background: rgba(100, 116, 139, 0.12); color: #64748b; border-color: rgba(100, 116, 139, 0.3); }
+
 .stat-meta {
-  font-size: 11.5px;
   color: var(--md-sys-color-on-surface-variant);
-  margin-left: 4px;
+  font-size: 0.72rem;
 }
 
 .structural-toggle-btn {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 5px;
+  background: var(--md-sys-color-surface-container-high);
   border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-container);
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 11.5px;
-  font-weight: 500;
-  padding: 3px 9px;
+  padding: 3px 8px;
   border-radius: 6px;
+  font-size: 0.72rem;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+.structural-toggle-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
 }
 
 .structural-toggle-btn.active {
@@ -1488,68 +2388,48 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
   color: var(--md-sys-color-primary);
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: 500;
 }
 
 .exec-time-pill {
-  font-size: 11px;
-  color: var(--md-sys-color-on-surface-variant);
   background: var(--md-sys-color-surface-container-high);
-  padding: 2px 7px;
-  border-radius: 4px;
-}
-
-/* Category Specific Colors */
-.cat-badge,
-.struct-type-pill {
-  font-size: 10px;
+  color: var(--md-sys-color-on-surface-variant);
   padding: 2px 6px;
   border-radius: 4px;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-size: 0.7rem;
+  font-family: monospace;
 }
-
-.badge-email, .stat-email { background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); }
-.badge-password, .stat-password { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
-.badge-card, .stat-credit-card { background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3); }
-.badge-jwt, .stat-jwt { background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); }
-.badge-ip, .stat-ip { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
-.badge-api, .stat-api-key { background: rgba(236, 72, 153, 0.15); color: #f472b6; border: 1px solid rgba(236, 72, 153, 0.3); }
-.badge-phone, .stat-phone { background: rgba(14, 165, 233, 0.15); color: #38bdf8; border: 1px solid rgba(14, 165, 233, 0.3); }
-.badge-ssn, .stat-ssn { background: rgba(249, 115, 22, 0.15); color: #fb923c; border: 1px solid rgba(249, 115, 22, 0.3); }
-.badge-mac, .stat-mac-address { background: rgba(139, 92, 246, 0.15); color: #a78bfa; border: 1px solid rgba(139, 92, 246, 0.3); }
-.badge-custom, .stat-custom { background: rgba(107, 114, 128, 0.15); color: #9ca3af; border: 1px solid rgba(107, 114, 128, 0.3); }
 
 /* Rules Manager Panel */
 .rules-manager-panel {
+  background: var(--md-sys-color-surface-container);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  padding: 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background-color: var(--md-sys-color-surface-container-low);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 10px;
+  gap: 0.5rem;
+  max-height: 280px;
+  overflow-y: auto;
 }
 
 .rules-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  justify-content: space-between;
 }
 
 .rules-title {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 6px;
   color: var(--md-sys-color-on-surface);
 }
 
 .rules-title h3 {
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   font-weight: 600;
   margin: 0;
 }
@@ -1557,7 +2437,7 @@ onBeforeUnmount(() => {
 .rules-header-actions {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 6px;
 }
 
 .close-rules-btn {
@@ -1565,75 +2445,72 @@ onBeforeUnmount(() => {
   border: none;
   color: var(--md-sys-color-on-surface-variant);
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   padding: 4px;
-  border-radius: 50%;
-}
-
-.close-rules-btn:hover {
-  background-color: var(--md-sys-color-surface-container-highest);
-  color: var(--md-sys-color-on-surface);
+  border-radius: 4px;
 }
 
 .rules-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 0.5rem;
-  max-height: 220px;
-  overflow-y: auto;
 }
 
 .rule-card {
+  background: var(--md-sys-color-surface-container-low);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: 6px;
+  padding: 0.5rem;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.5rem 0.65rem;
-  background-color: var(--md-sys-color-surface);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 8px;
+  gap: 4px;
   transition: all 0.15s ease;
 }
 
 .rule-card.active {
   border-color: var(--md-sys-color-primary);
-  background-color: var(--md-sys-color-surface-container-high);
+  background: var(--md-sys-color-surface-container-high);
 }
 
 .rule-card-top {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
 }
 
 .rule-title-group {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 6px;
   cursor: pointer;
-  user-select: none;
-}
-
-.rule-checkbox {
-  cursor: pointer;
-  accent-color: var(--md-sys-color-primary);
-}
-
-.rule-cat-icon {
-  color: var(--md-sys-color-primary);
 }
 
 .rule-name {
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--md-sys-color-on-surface);
 }
 
-.rule-card-badges {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
+.rule-desc {
+  font-size: 0.7rem;
+  color: var(--md-sys-color-on-surface-variant);
+  margin: 0;
+  line-height: 1.3;
+}
+
+.rule-example code {
+  font-size: 0.68rem;
+  color: var(--md-sys-color-primary);
+  background: var(--md-sys-color-surface);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.cat-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
 }
 
 .delete-rule-btn {
@@ -1641,338 +2518,356 @@ onBeforeUnmount(() => {
   border: none;
   color: var(--md-sys-color-error);
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
+  padding: 2px;
 }
 
-.delete-rule-btn:hover {
-  background-color: rgba(255, 0, 0, 0.1);
-}
+/* Category Badge Styles */
+.badge-email { background: rgba(59, 130, 246, 0.2); color: #3b82f6; }
+.badge-password { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+.badge-card { background: rgba(245, 158, 11, 0.2); color: #f59e0b; }
+.badge-jwt { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+.badge-ip { background: rgba(6, 182, 212, 0.2); color: #06b6d4; }
+.badge-api { background: rgba(236, 72, 153, 0.2); color: #ec4899; }
+.badge-cloud { background: rgba(249, 115, 22, 0.2); color: #f97316; }
+.badge-db { background: rgba(139, 92, 246, 0.2); color: #8b5cf6; }
+.badge-phone { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+.badge-ssn { background: rgba(234, 88, 12, 0.2); color: #ea580c; }
+.badge-nik { background: rgba(14, 165, 233, 0.2); color: #0ea5e9; }
+.badge-mac { background: rgba(100, 116, 139, 0.2); color: #64748b; }
+.badge-custom { background: rgba(120, 120, 120, 0.2); color: #888; }
 
-.rule-desc {
-  font-size: 0.72rem;
-  color: var(--md-sys-color-on-surface-variant);
-  margin: 0;
-  line-height: 1.2;
-}
-
-.rule-example {
-  margin-top: 0.15rem;
-}
-
-.rule-example code {
-  font-size: 0.68rem;
-  font-family: monospace;
-  background-color: rgba(0, 0, 0, 0.2);
-  padding: 0.1rem 0.3rem;
-  border-radius: 4px;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-/* Workspace (Matching JSON Diff) */
+/* Main Workspace */
 .diff-workspace {
-  position: relative;
+  flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.redactor-split-pane {
   flex: 1;
   min-height: 0;
   height: 100%;
-  gap: 10px;
 }
 
-.edit-mode-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
-  flex: 1;
-  min-height: 0;
+.pane-wrapper {
+  display: flex;
+  flex-direction: column;
   height: 100%;
   width: 100%;
-  box-sizing: border-box;
-}
-
-.edit-panel {
-  display: flex;
-  flex-direction: column;
-  background: var(--md-sys-color-surface-container);
+  min-height: 0;
+  background: var(--md-sys-color-surface-container-low);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 10px;
+  border-radius: var(--md-sys-shape-corner-small);
   overflow: hidden;
-  min-width: 0;
-  height: 100%;
 }
 
-.panel-header {
+.pane-wrapper.hidden {
+  display: none !important;
+}
+
+.pane-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
-  background: var(--md-sys-color-surface-container-high);
+  padding: 0.25rem 0.5rem;
+  background: var(--md-sys-color-surface-container);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  font-size: 12px;
-  font-weight: 600;
-  flex-shrink: 0;
+  min-height: 28px;
 }
 
-.panel-title-group {
+.pane-header-left,
+.pane-header-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.4rem;
 }
 
-.panel-title {
-  color: var(--md-sys-color-on-surface);
+.primary-icon {
+  color: var(--md-sys-color-primary);
 }
 
 .sanitized-icon {
   color: #10b981;
 }
 
+.pane-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface);
+}
+
+.size-tag,
 .line-badge {
-  font-size: 11px;
-  background: var(--md-sys-color-surface-container-lowest);
+  font-size: 0.68rem;
+  background: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface-variant);
-  padding: 1px 6px;
+  padding: 1px 5px;
   border-radius: 4px;
-  font-weight: 500;
 }
 
 .matches-badge {
-  font-size: 11px;
+  font-size: 0.68rem;
   background: rgba(239, 68, 68, 0.15);
-  color: #f87171;
-  padding: 1px 6px;
-  border-radius: 4px;
+  color: #ef4444;
   font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
 .clean-badge {
-  font-size: 11px;
+  font-size: 0.68rem;
   background: rgba(16, 185, 129, 0.15);
-  color: #34d399;
-  padding: 1px 6px;
-  border-radius: 4px;
+  color: #10b981;
   font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
-.panel-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.panel-mini-btn {
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-container);
+.pane-icon-btn,
+.col-find-toggle-btn {
+  background: transparent;
+  border: none;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 11px;
-  padding: 2px 7px;
+  padding: 3px 6px;
   border-radius: 4px;
   cursor: pointer;
-  transition: all 0.12s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
 }
 
-.panel-mini-btn:hover:not(:disabled) {
+.pane-icon-btn:hover,
+.col-find-toggle-btn:hover {
   background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
 }
 
-.panel-mini-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.col-find-toggle-btn.active {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+}
+
+.btn-danger-hover:hover {
+  color: var(--md-sys-color-error);
+}
+
+/* In-Editor Find Bar */
+.column-find-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  background: var(--md-sys-color-surface-container-high);
+  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.find-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.find-icon {
+  position: absolute;
+  left: 6px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.find-input {
+  width: 100%;
+  background: var(--md-sys-color-surface);
+  border: 1px solid var(--md-sys-color-outline);
+  color: var(--md-sys-color-on-surface);
+  font-size: 0.72rem;
+  padding: 2px 50px 2px 22px;
+  border-radius: 4px;
+  outline: none;
+}
+
+.find-count {
+  position: absolute;
+  right: 6px;
+  font-size: 0.68rem;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.find-opt-btn,
+.find-nav-btn,
+.find-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--md-sys-color-on-surface-variant);
+  padding: 2px 5px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.72rem;
+}
+
+.find-opt-btn.active {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
 }
 
 .editor-inner-wrap {
   flex: 1;
   min-height: 0;
   height: 100%;
-  overflow: hidden;
 }
 
-/* Structural Resize Handle (Matching JSON Diff) */
+/* Structural Splitter Handle */
 .structural-resize-handle {
+  height: 6px;
+  width: 100%;
+  cursor: row-resize;
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 8px;
-  cursor: row-resize;
-  background: transparent;
-  user-select: none;
-  margin: 2px 0 -4px 0;
-  z-index: 10;
-  border-radius: 4px;
-  transition: all 0.15s ease;
+  background: var(--md-sys-color-surface-container-low);
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+  transition: background 0.15s ease;
 }
 
 .structural-resize-handle:hover,
 .structural-resize-handle.is-dragging {
-  background: var(--md-sys-color-surface-container-highest);
+  background: var(--md-sys-color-primary-container);
 }
 
 .resize-handle-bar {
-  width: 44px;
-  height: 3.5px;
+  width: 32px;
+  height: 3px;
+  background: var(--md-sys-color-outline);
   border-radius: 2px;
-  background: var(--md-sys-color-outline-variant);
-  transition: background 0.15s ease, width 0.15s ease;
 }
 
-.structural-resize-handle:hover .resize-handle-bar,
-.structural-resize-handle.is-dragging .resize-handle-bar {
-  background: var(--md-sys-color-primary);
-  width: 72px;
-}
-
-/* Structural Breakdown Panel (Matching JSON Diff) */
+/* Structural & Vault Bottom Panel */
 .structural-panel {
   display: flex;
   flex-direction: column;
   background: var(--md-sys-color-surface-container);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 10px;
+  border-radius: var(--md-sys-shape-corner-small);
   overflow: hidden;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
-  min-height: 120px;
   flex-shrink: 0;
-  position: relative;
-  transition: height 0.12s ease-out;
+  transition: height 0.1s ease;
 }
 
 .structural-panel.is-maximized {
   position: absolute;
   inset: 0;
   height: 100% !important;
-  max-height: 100% !important;
-  z-index: 40;
-  border-radius: 10px;
+  z-index: 100;
 }
 
 .structural-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 12px;
+  padding: 0.25rem 0.625rem;
   background: var(--md-sys-color-surface-container-high);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  flex-shrink: 0;
-  gap: 8px;
+  min-height: 30px;
 }
 
 .header-left,
 .header-right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
-.sec-title {
-  font-size: 12px;
+.inspector-tab-group {
+  display: inline-flex;
+  background: var(--md-sys-color-surface-container-low);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.inspector-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  color: var(--md-sys-color-on-surface-variant);
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
   font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.inspector-tab-btn.active {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
 }
 
 .count-tag {
-  font-size: 11px;
-  background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
-  padding: 2px 7px;
-  border-radius: 10px;
-  font-weight: 600;
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
+  font-size: 0.65rem;
+  padding: 1px 4px;
+  border-radius: 8px;
 }
 
 .panel-presets-group {
-  display: inline-flex;
-  background: var(--md-sys-color-surface-container-lowest);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 6px;
-  padding: 2px;
+  display: flex;
   gap: 2px;
-  margin-left: 6px;
 }
 
 .preset-btn {
-  border: none;
   background: transparent;
+  border: 1px solid var(--md-sys-color-outline-variant);
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 10.5px;
-  font-weight: 500;
-  padding: 2px 6px;
-  border-radius: 4px;
+  font-size: 0.68rem;
+  padding: 1px 5px;
+  border-radius: 3px;
   cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.preset-btn:hover {
-  background: var(--md-sys-color-surface-container-high);
-  color: var(--md-sys-color-on-surface);
 }
 
 .preset-btn.active {
-  background: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  font-weight: 600;
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
 }
 
 .panel-action-group {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
   gap: 2px;
-  background: var(--md-sys-color-surface-container-lowest);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 6px;
-  padding: 2px;
 }
 
-.panel-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 22px;
-  border: none;
+.panel-icon-btn,
+.close-mini-btn {
   background: transparent;
+  border: none;
   color: var(--md-sys-color-on-surface-variant);
-  border-radius: 4px;
+  padding: 3px 6px;
+  border-radius: 3px;
   cursor: pointer;
-  transition: all 0.12s ease;
+  font-size: 0.75rem;
 }
 
-.panel-icon-btn:hover {
-  background: var(--md-sys-color-surface-container-high);
+.panel-icon-btn:hover,
+.close-mini-btn:hover {
+  background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface);
 }
 
-.panel-icon-btn.active {
-  background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
-}
-
-.close-mini-btn {
-  border: none;
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
-  cursor: pointer;
-  padding: 3px 7px;
-  border-radius: 4px;
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.close-mini-btn:hover {
-  background: var(--md-sys-color-surface-container-highest);
-  color: var(--md-sys-color-error);
-}
-
-/* Structural Subbar (Filter & Export) */
+/* Subbar */
 .structural-subbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 12px;
-  background: var(--md-sys-color-surface-container-lowest);
+  padding: 0.25rem 0.5rem;
+  background: var(--md-sys-color-surface-container);
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  flex-shrink: 0;
   gap: 8px;
   overflow-x: auto;
 }
@@ -1981,85 +2876,76 @@ onBeforeUnmount(() => {
 .subbar-right {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.4rem;
 }
 
 .search-box {
   position: relative;
   display: flex;
   align-items: center;
-  background: var(--md-sys-color-surface-container-high);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 6px;
-  padding: 0 6px;
-  width: 200px;
 }
 
 .search-icon {
+  position: absolute;
+  left: 6px;
   color: var(--md-sys-color-on-surface-variant);
-  flex-shrink: 0;
 }
 
 .search-input {
-  width: 100%;
-  border: none;
-  background: transparent;
-  font-size: 11px;
-  padding: 3px 4px;
+  background: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline);
   color: var(--md-sys-color-on-surface);
+  font-size: 0.72rem;
+  padding: 2px 22px 2px 22px;
+  border-radius: 4px;
   outline: none;
+  width: 180px;
 }
 
 .clear-search-btn {
-  border: none;
+  position: absolute;
+  right: 5px;
   background: transparent;
+  border: none;
   color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.65rem;
   cursor: pointer;
-  padding: 0 2px;
-  font-size: 10px;
 }
 
 .filter-chips {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  gap: 3px;
+  overflow-x: auto;
 }
 
 .filter-chip {
-  border: 1px solid var(--md-sys-color-outline-variant);
   background: transparent;
+  border: 1px solid var(--md-sys-color-outline-variant);
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 10.5px;
-  font-weight: 500;
-  padding: 2px 7px;
-  border-radius: 12px;
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.12s ease;
   white-space: nowrap;
 }
 
-.filter-chip:hover {
-  background: var(--md-sys-color-surface-container-high);
-}
-
 .filter-chip.active {
-  box-shadow: 0 0 0 2px var(--md-sys-color-primary);
-  font-weight: 700;
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  border-color: var(--md-sys-color-primary);
 }
 
 .subbar-btn {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
-  border: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface-container-high);
+  border: 1px solid var(--md-sys-color-outline-variant);
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 10.5px;
-  font-weight: 500;
-  padding: 2px 7px;
-  border-radius: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
   cursor: pointer;
-  transition: all 0.12s ease;
   white-space: nowrap;
 }
 
@@ -2068,71 +2954,80 @@ onBeforeUnmount(() => {
   color: var(--md-sys-color-on-surface);
 }
 
-/* Structural Table */
+.subbar-btn.active {
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
+  border-color: var(--md-sys-color-primary);
+}
+
+/* Table */
 .structural-table-container {
   flex: 1;
-  overflow: auto;
   min-height: 0;
+  overflow-y: auto;
+  overflow-x: auto;
 }
 
 .structural-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11.5px;
+  font-size: 0.72rem;
   text-align: left;
 }
 
 .structural-table th {
-  position: sticky;
-  top: 0;
   background: var(--md-sys-color-surface-container-high);
   color: var(--md-sys-color-on-surface-variant);
-  padding: 6px 12px;
+  padding: 4px 8px;
   font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 10;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  z-index: 2;
+  white-space: nowrap;
 }
 
 .structural-table td {
-  padding: 5px 12px;
+  padding: 3px 8px;
   border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  vertical-align: middle;
-}
-
-.clickable-struct-row {
-  transition: background 0.12s ease;
+  color: var(--md-sys-color-on-surface);
+  white-space: nowrap;
 }
 
 .clickable-struct-row:hover {
-  background: var(--md-sys-color-surface-container-high);
+  background: var(--md-sys-color-surface-container-highest);
 }
 
 .idx-col {
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 11px;
+  font-family: monospace;
 }
 
-.rule-name-text {
-  font-weight: 500;
-  color: var(--md-sys-color-on-surface);
+.struct-type-pill {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
 }
 
 .loc-code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 10.5px;
-  background: var(--md-sys-color-surface-container-high);
-  padding: 2px 5px;
-  border-radius: 4px;
-  color: var(--md-sys-color-on-surface-variant);
+  font-family: monospace;
+  font-size: 0.68rem;
+  color: var(--md-sys-color-primary);
 }
 
 .masked-code {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: monospace;
+  font-size: 0.7rem;
   color: #10b981;
-  background-color: rgba(16, 185, 129, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 11px;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.token-vault-key {
+  color: #a855f7;
+  background: rgba(168, 85, 247, 0.1);
 }
 
 .original-val-wrapper {
@@ -2142,60 +3037,36 @@ onBeforeUnmount(() => {
 }
 
 .original-preview {
-  font-family: 'JetBrains Mono', monospace;
-  color: #f87171;
-  background-color: rgba(239, 68, 68, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 11px;
-  max-width: 320px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: inline-block;
+  font-family: monospace;
+  font-size: 0.7rem;
+  color: var(--md-sys-color-on-surface);
 }
 
-.copy-path-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: none;
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
-  cursor: pointer;
-  border-radius: 3px;
-  opacity: 0.6;
-  transition: all 0.12s ease;
+.original-preview.blurred {
+  filter: blur(4px);
+  user-select: none;
 }
 
-.copy-path-btn:hover {
-  opacity: 1;
-  background: var(--md-sys-color-surface-container-highest);
-  color: var(--md-sys-color-primary);
-}
-
+.copy-path-btn,
 .jump-pill-btn {
-  border: 1px solid var(--md-sys-color-outline-variant);
   background: var(--md-sys-color-surface-container-high);
-  color: var(--md-sys-color-primary);
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 0.68rem;
+  padding: 1px 5px;
+  border-radius: 3px;
   cursor: pointer;
-  transition: all 0.12s ease;
 }
 
+.copy-path-btn:hover,
 .jump-pill-btn:hover {
-  background: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
+  background: var(--md-sys-color-surface-container-highest);
+  color: var(--md-sys-color-on-surface);
 }
 
 .empty-struct-search {
   text-align: center;
-  padding: 24px 12px;
+  padding: 1.5rem;
   color: var(--md-sys-color-on-surface-variant);
   font-style: italic;
 }
@@ -2204,79 +3075,38 @@ onBeforeUnmount(() => {
 .custom-rule-dialog-form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 0.5rem 0;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
 }
 
 .dialog-desc {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: var(--md-sys-color-on-surface-variant);
   margin: 0;
-  line-height: 1.4;
 }
 
 .form-row-duo {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .dialog-error-box {
-  background-color: rgba(239, 68, 68, 0.15);
-  border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #f87171;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
-  font-size: 0.8rem;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid var(--md-sys-color-error);
+  color: var(--md-sys-color-error);
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
 }
 
-/* Animation */
-.expand-enter-active,
-.expand-leave-active {
-  transition: all 0.25s ease-out;
-  overflow: hidden;
-}
-
-.expand-enter-from,
-.expand-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-
-/* Responsive */
-@media (max-width: 1024px) {
-  .sample-presets-group {
+/* Responsive adjustments */
+@media (max-width: 900px) {
+  .mobile-column-tabs {
+    display: inline-flex;
+  }
+  .samples-group {
     display: none;
-  }
-}
-
-@media (max-width: 768px) {
-  .diff-toolbar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-  }
-
-  .toolbar-left,
-  .toolbar-right {
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .diff-stats-bar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .stats-left,
-  .stats-right {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .edit-mode-grid {
-    grid-template-columns: 1fr;
-    min-height: 400px;
   }
 }
 </style>

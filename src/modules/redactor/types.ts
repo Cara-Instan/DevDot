@@ -8,6 +8,9 @@ export type PiiCategory =
   | 'phone'
   | 'ssn'
   | 'mac-address'
+  | 'database-uri'
+  | 'cloud-secret'
+  | 'identity-number'
   | 'custom'
 
 export type MaskingMode =
@@ -62,6 +65,7 @@ export interface PiiRedactResult {
   matchesByCategory: Record<PiiCategory, number>
   matchesByRule: Record<string, number>
   matches: PiiMatch[]
+  tokenMap: Record<string, string>
   executionTimeMs: number
   lineCount: number
   charCount: number
@@ -73,6 +77,7 @@ export interface PiiAnalyzeResult {
   matchesByCategory: Record<PiiCategory, number>
   matchesByRule: Record<string, number>
   matches: PiiMatch[]
+  tokenMap: Record<string, string>
   executionTimeMs: number
   lineCount: number
 }

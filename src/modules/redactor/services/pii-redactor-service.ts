@@ -36,7 +36,19 @@ export const DEFAULT_PII_RULES: PiiRule[] = [
     enabled: true
   },
 
-  // 3. Credit Card Numbers
+  // 3. Database Connection Strings / URIs
+  {
+    id: 'rule-database-uri',
+    name: 'Database URIs & Connstrings',
+    category: 'database-uri',
+    pattern: '\\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\\+srv)?|redis|rediss|couchdb|neo4j|amqp|amqps):\\/\\/[A-Za-z0-9._%+-]+:[^@\\s"\'`]+@[A-Za-z0-9.-]+(?::[0-9]+)?(?:\\/[A-Za-z0-9._%+-]*)?(?:\\?[^\\s"\'`]*)?',
+    flags: 'gi',
+    description: 'Detects database connection URLs with embedded user credentials',
+    example: 'postgresql://admin:Pass123@10.0.1.50:5432/prod_db, mongodb+srv://usr:pwd@cluster0.net',
+    enabled: true
+  },
+
+  // 4. Credit Card Numbers
   {
     id: 'rule-credit-card',
     name: 'Credit Card Numbers',
@@ -48,7 +60,7 @@ export const DEFAULT_PII_RULES: PiiRule[] = [
     enabled: true
   },
 
-  // 4. JWT & Bearer Tokens
+  // 5. JWT & Bearer Tokens
   {
     id: 'rule-jwt',
     name: 'JWT & Bearer Tokens',
@@ -60,7 +72,7 @@ export const DEFAULT_PII_RULES: PiiRule[] = [
     enabled: true
   },
 
-  // 5. IPv4 and IPv6 Addresses
+  // 6. IPv4 and IPv6 Addresses
   {
     id: 'rule-ip',
     name: 'IP Addresses (v4 & v6)',
@@ -72,7 +84,7 @@ export const DEFAULT_PII_RULES: PiiRule[] = [
     enabled: true
   },
 
-  // 6. Cloud & API Keys (AWS, GitHub, Stripe, Slack, Google)
+  // 7. Cloud & API Keys (AWS, GitHub, Stripe, Slack, Google)
   {
     id: 'rule-api-key',
     name: 'Cloud & API Keys',
@@ -84,7 +96,19 @@ export const DEFAULT_PII_RULES: PiiRule[] = [
     enabled: true
   },
 
-  // 7. Phone Numbers
+  // 8. Cloud Secrets & Private Keys (AWS Secret, Azure Conn, RSA/PEM)
+  {
+    id: 'rule-cloud-secret',
+    name: 'Cloud Secrets & Private Keys',
+    category: 'cloud-secret',
+    pattern: '(?:(?<=AWS_SECRET_ACCESS_KEY|aws_sec_key|SECRET_KEY|secret_key)[\\s:="\'`]+)([A-Za-z0-9/+=]{40})|\\bDefaultEndpointsProtocol=https;AccountName=[A-Za-z0-9_-]+;AccountKey=[A-Za-z0-9+/=]{60,100}\\b|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----',
+    flags: 'gi',
+    description: 'Detects AWS Secret Keys (40 chars base64), Azure connection strings, and PEM private keys',
+    example: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY, DefaultEndpointsProtocol=https;...',
+    enabled: true
+  },
+
+  // 9. Phone Numbers (International & Local)
   {
     id: 'rule-phone',
     name: 'Phone Numbers',
@@ -96,7 +120,7 @@ export const DEFAULT_PII_RULES: PiiRule[] = [
     enabled: true
   },
 
-  // 8. Social Security Numbers (SSN) / National IDs
+  // 10. Social Security Numbers (SSN)
   {
     id: 'rule-ssn',
     name: 'Social Security Numbers (SSN)',
@@ -108,7 +132,19 @@ export const DEFAULT_PII_RULES: PiiRule[] = [
     enabled: true
   },
 
-  // 9. MAC Addresses
+  // 11. National ID Numbers / NIK / NPWP
+  {
+    id: 'rule-identity-number',
+    name: 'National ID / NIK / NPWP',
+    category: 'identity-number',
+    pattern: '\\b(?:[1-9][0-9]{15}|[0-9]{2}\\.[0-9]{3}\\.[0-9]{3}\\.[0-9]-[0-9]{3}\\.[0-9]{3})\\b',
+    flags: 'g',
+    description: 'Detects 16-digit National Identification Numbers (e.g. NIK) and formatted NPWP numbers',
+    example: '3171012304950001, 01.385.234.5-012.000',
+    enabled: true
+  },
+
+  // 12. MAC Addresses
   {
     id: 'rule-mac-address',
     name: 'MAC Addresses',
@@ -159,8 +195,11 @@ export function generateMask(
         jwt: '[JWT_TOKEN]',
         ip: '[IP_ADDRESS]',
         'api-key': '[API_KEY]',
+        'cloud-secret': '[CLOUD_SECRET]',
+        'database-uri': '[DATABASE_URI]',
         phone: '[PHONE_NUMBER]',
         ssn: '[SSN]',
+        'identity-number': '[NATIONAL_ID]',
         'mac-address': '[MAC_ADDRESS]',
         custom: '[REDACTED]'
       }
@@ -215,7 +254,17 @@ export function generateMask(
         }
       }
 
-      if (category === 'jwt' || category === 'api-key' || category === 'password') {
+      if (category === 'identity-number') {
+        if (val.length >= 8) {
+          return `${val.slice(0, 4)}********${val.slice(-4)}`
+        }
+      }
+
+      if (category === 'database-uri') {
+        return val.replace(/:([^@\s]+)@/, ':***@')
+      }
+
+      if (category === 'jwt' || category === 'api-key' || category === 'cloud-secret' || category === 'password') {
         if (val.length > 8) {
           return `${val.slice(0, 4)}***${val.slice(-3)}`
         }
@@ -281,30 +330,35 @@ export function analyzePii(
 ): PiiAnalyzeResult {
   const startTime = performance.now()
 
+  const emptyCategories: Record<PiiCategory, number> = {
+    email: 0,
+    password: 0,
+    'credit-card': 0,
+    jwt: 0,
+    ip: 0,
+    'api-key': 0,
+    'cloud-secret': 0,
+    'database-uri': 0,
+    phone: 0,
+    ssn: 0,
+    'identity-number': 0,
+    'mac-address': 0,
+    custom: 0
+  }
+
   if (!input) {
     return {
       totalMatches: 0,
-      matchesByCategory: {
-        email: 0,
-        password: 0,
-        'credit-card': 0,
-        jwt: 0,
-        ip: 0,
-        'api-key': 0,
-        phone: 0,
-        ssn: 0,
-        'mac-address': 0,
-        custom: 0
-      },
+      matchesByCategory: emptyCategories,
       matchesByRule: {},
       matches: [],
+      tokenMap: {},
       executionTimeMs: 0,
       lineCount: 1
     }
   }
 
   const lineOffsets = buildLineOffsets(input)
-
 
   // Combine built-in rules with user custom rules
   const allRules: PiiRule[] = [
@@ -395,25 +449,15 @@ export function analyzePii(
     }
   }
 
-  // Calculate statistics breakdown
-  const matchesByCategory: Record<PiiCategory, number> = {
-    email: 0,
-    password: 0,
-    'credit-card': 0,
-    jwt: 0,
-    ip: 0,
-    'api-key': 0,
-    phone: 0,
-    ssn: 0,
-    'mac-address': 0,
-    custom: 0
-  }
-
+  // Calculate statistics breakdown & Token Map
+  const matchesByCategory: Record<PiiCategory, number> = { ...emptyCategories }
   const matchesByRule: Record<string, number> = {}
+  const tokenMap: Record<string, string> = {}
 
   for (const m of nonOverlappingMatches) {
     matchesByCategory[m.category] = (matchesByCategory[m.category] || 0) + 1
     matchesByRule[m.ruleName] = (matchesByRule[m.ruleName] || 0) + 1
+    tokenMap[m.maskedValue] = m.originalValue
   }
 
   const executionTimeMs = Math.round((performance.now() - startTime) * 100) / 100
@@ -424,6 +468,7 @@ export function analyzePii(
     matchesByCategory,
     matchesByRule,
     matches: nonOverlappingMatches,
+    tokenMap,
     executionTimeMs,
     lineCount
   }
@@ -438,24 +483,30 @@ export function redactPii(
 ): PiiRedactResult {
   const startTime = performance.now()
 
+  const emptyCategories: Record<PiiCategory, number> = {
+    email: 0,
+    password: 0,
+    'credit-card': 0,
+    jwt: 0,
+    ip: 0,
+    'api-key': 0,
+    'cloud-secret': 0,
+    'database-uri': 0,
+    phone: 0,
+    ssn: 0,
+    'identity-number': 0,
+    'mac-address': 0,
+    custom: 0
+  }
+
   if (!input) {
     return {
       redactedText: '',
       totalMatches: 0,
-      matchesByCategory: {
-        email: 0,
-        password: 0,
-        'credit-card': 0,
-        jwt: 0,
-        ip: 0,
-        'api-key': 0,
-        phone: 0,
-        ssn: 0,
-        'mac-address': 0,
-        custom: 0
-      },
+      matchesByCategory: emptyCategories,
       matchesByRule: {},
       matches: [],
+      tokenMap: {},
       executionTimeMs: 0,
       lineCount: 1,
       charCount: 0,
@@ -486,6 +537,7 @@ export function redactPii(
     matchesByCategory: analysis.matchesByCategory,
     matchesByRule: analysis.matchesByRule,
     matches: nonOverlappingMatches,
+    tokenMap: analysis.tokenMap,
     executionTimeMs,
     lineCount,
     charCount: input.length,
