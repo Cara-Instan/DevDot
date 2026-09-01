@@ -8,6 +8,8 @@ export { default as PrivacyDialog } from './PrivacyDialog.vue'
 export { default as PanicDialog } from './PanicDialog.vue'
 export { default as SnapshotDialog } from './SnapshotDialog.vue'
 export { default as SettingsDialog } from './SettingsDialog.vue'
+export { default as AppTabBar } from './AppTabBar.vue'
 export { default as ToolIcon } from './ToolIcon.vue'
 export { default as PwaInstallBanner } from './PwaInstallBanner.vue'
+
 
