@@ -93,8 +93,11 @@ const outputEditorLang = computed(() => {
 
 // Conversion execution
 function handleConvert(
-  triggerOptions: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean; isOptionChange?: boolean } = {}
+  triggerOptions?: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean; isOptionChange?: boolean } | Event
 ) {
+  const opts = (triggerOptions && typeof triggerOptions === 'object' && !('target' in triggerOptions))
+    ? triggerOptions
+    : {}
   errorMsg.value = null
 
   if (!rawCurl.value.trim()) {
@@ -116,21 +119,21 @@ function handleConvert(
     outputCode.value = res.code
     parsedRequest.value = res.parsed
     executionTimeMs.value = res.executionTimeMs || 0
-    const isSample = triggerOptions.isSample || isPresetSample(rawCurl.value)
+    const isSample = opts.isSample || isPresetSample(rawCurl.value)
     gamificationStore.trackAction({
       type: 'curl_convert',
       bytes: rawCurl.value.length,
       isSample,
-      isMount: triggerOptions.isMount,
-      isAutomatic: triggerOptions.isAutomatic,
-      isOptionChange: triggerOptions.isOptionChange,
+      isMount: opts.isMount,
+      isAutomatic: opts.isAutomatic,
+      isOptionChange: opts.isOptionChange,
       payloadHash: computePayloadHash(rawCurl.value)
     })
   } catch (err: any) {
     errorMsg.value = err.message || 'Failed to parse cURL command'
     outputCode.value = ''
     parsedRequest.value = null
-    if (!triggerOptions.isMount && !triggerOptions.isAutomatic) {
+    if (!opts.isMount && !opts.isAutomatic) {
       gamificationStore.reportSyntaxError()
     }
   }
