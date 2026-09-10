@@ -20,11 +20,12 @@ import {
   M3Checkbox
 } from '@/components/ui'
 import ToolIcon from './ToolIcon.vue'
-import { useNavigationStore, useSnapshotStore, ALL_TOOLS, type ToolkitSnapshot } from '@/stores'
+import { useNavigationStore, useSnapshotStore, useGamificationStore, ALL_TOOLS, type ToolkitSnapshot } from '@/stores'
 import { useNativeIntegration } from '@/composables'
 
 const navStore = useNavigationStore()
 const snapshotStore = useSnapshotStore()
+const gamificationStore = useGamificationStore()
 const { isNative, exportSnapshotNative, importSnapshotNative } = useNativeIntegration()
 
 const activeTab = ref<'export' | 'import'>('export')
@@ -108,6 +109,7 @@ async function handleExport() {
   })
 
   if (res.success) {
+    gamificationStore.trackAction({ type: 'snapshot_export' })
     navStore.closeSnapshotModal()
   }
 }

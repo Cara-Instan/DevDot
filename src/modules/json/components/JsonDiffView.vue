@@ -32,7 +32,7 @@ import {
   type FilterChipOption
 } from '@/components'
 import { useExecutionEngine } from '@/composables'
-import { useSnapshotStore } from '@/stores'
+import { useSnapshotStore, useGamificationStore } from '@/stores'
 import type {
   DiffViewMode,
   JsonDiffOptions,
@@ -42,6 +42,7 @@ import type {
 
 const { execute } = useExecutionEngine()
 const snapshotStore = useSnapshotStore()
+const gamificationStore = useGamificationStore()
 
 // Sample presets for demo and testing
 const SAMPLES = {
@@ -55,6 +56,12 @@ const SAMPLES = {
     left: `{\n  "serviceName": "auth-gateway",\n  "environment": "staging",\n  "port": 8080,\n  "replicas": 2,\n  "rateLimit": {\n    "maxRequests": 100,\n    "windowMs": 60000\n  },\n  "corsOrigins": [\n    "http://localhost:3000",\n    "http://staging.devdot.internal"\n  ],\n  "logging": {\n    "level": "debug",\n    "destination": "stdout"\n  }\n}`,
     right: `{\n  "serviceName": "auth-gateway",\n  "environment": "production",\n  "port": 443,\n  "replicas": 8,\n  "rateLimit": {\n    "maxRequests": 500,\n    "windowMs": 60000,\n    "burstTolerance": 50\n  },\n  "corsOrigins": [\n    "https://devdot.tools",\n    "https://app.devdot.tools"\n  ],\n  "logging": {\n    "level": "info",\n    "destination": "cloudwatch"\n  },\n  "tls": {\n    "enabled": true,\n    "minVersion": "1.3"\n  }\n}`
   }
+}
+
+function isPresetSample(left: string, right: string): boolean {
+  const tLeft = left.trim()
+  const tRight = right.trim()
+  return Object.values(SAMPLES).some((s) => s.left.trim() === tLeft && s.right.trim() === tRight)
 }
 
 const props = defineProps<{
@@ -197,7 +204,9 @@ watch(
 )
 
 // Perform Diff via Web Worker Engine
-async function handleRunDiff() {
+async function handleRunDiff(
+  triggerOptions: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean } = {}
+) {
   const options: JsonDiffOptions = {
     sortKeys: sortKeys.value,
     autoFormat: autoFormat.value,
@@ -222,20 +231,29 @@ async function handleRunDiff() {
     } else if (res.result.markers.length > 0 && currentDiffIndex.value === 0) {
       currentDiffIndex.value = 1
     }
+    const isSample = triggerOptions.isSample || isPresetSample(leftJson.value, rightJson.value)
+    gamificationStore.trackAction({
+      type: 'json_diff',
+      isSample,
+      isMount: triggerOptions.isMount,
+      isAutomatic: triggerOptions.isAutomatic
+    })
   }
 }
 
 // Watch inputs & options to re-calculate diff with debounce
 let debounceTimer: any = null
-function queueDiff() {
+function queueDiff(
+  triggerOptions: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean } = { isAutomatic: true }
+) {
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
-    handleRunDiff()
+    handleRunDiff(triggerOptions)
   }, 200)
 }
 
 watch([leftJson, rightJson, sortKeys, autoFormat, collapseUnchanged, contextLines], () => {
-  queueDiff()
+  queueDiff({ isAutomatic: true })
 })
 
 // Actions
@@ -243,7 +261,7 @@ function handleSwap() {
   const temp = leftJson.value
   leftJson.value = rightJson.value
   rightJson.value = temp
-  queueDiff()
+  queueDiff({ isAutomatic: true })
 }
 
 function handleClear() {
@@ -258,7 +276,7 @@ function handleLoadPreset(presetKey: keyof typeof SAMPLES) {
   if (preset) {
     leftJson.value = preset.left
     rightJson.value = preset.right
-    queueDiff()
+    queueDiff({ isSample: true })
   }
 }
 
@@ -857,7 +875,7 @@ async function copyStructuralAsCsv() {
 }
 
 onMounted(() => {
-  handleRunDiff()
+  handleRunDiff({ isMount: true })
   document.addEventListener('fullscreenchange', handleFullscreenChange)
   window.addEventListener('keydown', handleKeyDown)
 })

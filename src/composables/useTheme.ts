@@ -1,6 +1,7 @@
 import { computed, watch } from 'vue'
 import { usePreferredColorScheme, usePreferredContrast } from '@vueuse/core'
 import { useSettingsStore, type ThemeMode } from '@/stores/settings'
+import { useGamificationStore } from '@/stores/gamification'
 
 export type { ThemeMode }
 
@@ -70,6 +71,10 @@ export function useTheme() {
   const setThemeMode = (mode: ThemeMode) => {
     settingsStore.updateSettings({ themeMode: mode })
     applyTheme()
+    try {
+      const gamification = useGamificationStore()
+      gamification.trackAction({ type: 'theme_toggle' })
+    } catch {}
   }
 
   const toggleTheme = () => {
@@ -83,6 +88,10 @@ export function useTheme() {
   const setHighContrast = (enable: boolean) => {
     settingsStore.updateSettings({ isHighContrast: enable })
     applyTheme()
+    try {
+      const gamification = useGamificationStore()
+      gamification.trackAction({ type: 'theme_toggle' })
+    } catch {}
   }
 
   const toggleHighContrast = () => {

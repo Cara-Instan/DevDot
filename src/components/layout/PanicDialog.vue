@@ -12,9 +12,10 @@ import {
   ClipboardX
 } from 'lucide-vue-next'
 import { M3Dialog, M3Button } from '@/components/ui'
-import { useSecurityStore } from '@/stores'
+import { useSecurityStore, useGamificationStore } from '@/stores'
 
 const securityStore = useSecurityStore()
+const gamificationStore = useGamificationStore()
 const isSuccessMessageShown = ref(false)
 const clearedList = ref<string[]>([])
 
@@ -23,6 +24,7 @@ async function handleConfirmPanicWipe() {
   if (res.success) {
     clearedList.value = res.clearedItems
     isSuccessMessageShown.value = true
+    gamificationStore.trackAction({ type: 'panic_wipe' })
     setTimeout(() => {
       isSuccessMessageShown.value = false
     }, 4000)

@@ -32,7 +32,7 @@ import {
   M3Tooltip
 } from '@/components'
 import { useExecutionEngine } from '@/composables'
-import { useSnapshotStore } from '@/stores'
+import { useSnapshotStore, useGamificationStore } from '@/stores'
 import { decodeUlid } from '../services/id-generator-service'
 import { parseBcryptHash } from '../services/bcrypt-service'
 import { detectHashType } from '../services/hash-lookup-service'
@@ -53,6 +53,7 @@ import type {
 
 const { execute } = useExecutionEngine()
 const snapshotStore = useSnapshotStore()
+const gamificationStore = useGamificationStore()
 
 // Fullscreen & UI Container
 const rootRef = ref<HTMLDivElement | null>(null)
@@ -147,15 +148,27 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const inputCharCount = computed(() => hashInput.value.length)
 const inputByteCount = computed(() => new TextEncoder().encode(hashInput.value).length)
 
+const SAMPLE_TEXT = 'DevDot: 100% Offline Universal Developer Toolkit'
+const SAMPLE_JSON = '{\n  "appName": "DevDot",\n  "offline": true,\n  "version": "1.0.0"\n}'
+
+function isPresetSample(text: string): boolean {
+  const trimmed = text.trim()
+  return trimmed === SAMPLE_TEXT.trim() || trimmed === SAMPLE_JSON.trim()
+}
+
 function loadSampleText() {
-  hashInput.value = 'DevDot: 100% Offline Universal Developer Toolkit'
+  hashInput.value = SAMPLE_TEXT
+  calculateHashes({ isSample: true })
 }
 
 function loadSampleJson() {
-  hashInput.value = '{\n  "appName": "DevDot",\n  "offline": true,\n  "version": "1.0.0"\n}'
+  hashInput.value = SAMPLE_JSON
+  calculateHashes({ isSample: true })
 }
 
-async function calculateHashes() {
+async function calculateHashes(
+  triggerOptions: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean } = {}
+) {
   hashError.value = null
   if (!hashInput.value && !saltPrefix.value && !saltSuffix.value) {
     hashResults.value = {
@@ -187,6 +200,25 @@ async function calculateHashes() {
     if (res.success && res.result) {
       hashResults.value = res.result
       hashExecTime.value = res.executionTimeMs
+      const isSample = triggerOptions.isSample || isPresetSample(hashInput.value)
+      if (res.result.sha256) {
+        gamificationStore.trackAction({
+          type: 'hash_generate',
+          algo: 'SHA-256',
+          isSample,
+          isMount: triggerOptions.isMount,
+          isAutomatic: triggerOptions.isAutomatic
+        })
+      }
+      if (res.result.md5) {
+        gamificationStore.trackAction({
+          type: 'hash_generate',
+          algo: 'MD5',
+          isSample,
+          isMount: triggerOptions.isMount,
+          isAutomatic: triggerOptions.isAutomatic
+        })
+      }
     } else {
       hashError.value = res.error || 'Failed to compute hashes'
     }
@@ -319,6 +351,7 @@ async function handleGenerateBcrypt() {
 
     if (res.success && res.result) {
       bcryptGeneratedResult.value = res.result
+      gamificationStore.trackAction({ type: 'hash_generate', algo: 'BCRYPT' })
     }
   } catch (err: any) {
     console.error('Bcrypt generation failed:', err)
@@ -754,10 +787,13 @@ watch(
 )
 
 // Auto-trigger Hash Calculations on Tab 1 changes
+let isInitialHashRun = true
 watch(
   [hashInput, hashUppercase, hashEncoding, saltPrefix, saltSuffix, enableHmac, hmacSecret, hashToMatch],
   () => {
-    calculateHashes()
+    const isMount = isInitialHashRun
+    isInitialHashRun = false
+    calculateHashes({ isMount, isAutomatic: true })
   },
   { immediate: true }
 )

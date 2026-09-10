@@ -26,23 +26,32 @@ import {
   Scale,
   Layers,
   Shield,
-  ArrowUpDown
+  ArrowUpDown,
+  Gamepad2
 } from 'lucide-vue-next'
 import appLogo from '@/assets/logo.png'
 
 import { M3Dialog, M3Button, M3Switch } from '@/components/ui'
-import { useSettingsStore, useNavigationStore, useSecurityStore, usePwaStore } from '@/stores'
+import {
+  useSettingsStore,
+  useNavigationStore,
+  useSecurityStore,
+  usePwaStore,
+  useGamificationStore
+} from '@/stores'
 import { useTheme, useExecutionEngine } from '@/composables'
 
 const navStore = useNavigationStore()
 const settingsStore = useSettingsStore()
 const securityStore = useSecurityStore()
 const pwaStore = usePwaStore()
+const gamification = useGamificationStore()
 const { themeMode, isHighContrast, setThemeMode, toggleHighContrast } = useTheme()
 const { engine, platform } = useExecutionEngine()
 
-type SettingsTab = 'appearance' | 'privacy' | 'pwa' | 'tools' | 'about'
+type SettingsTab = 'appearance' | 'privacy' | 'pwa' | 'tools' | 'arcade' | 'about'
 const activeTab = ref<SettingsTab>('appearance')
+const gamificationResetSuccess = ref(false)
 
 const fontSizes = [11, 12, 13, 14, 16, 18]
 const purgeDelayOptions = [
@@ -97,6 +106,16 @@ function handleResetToolOrder() {
   setTimeout(() => {
     resetSuccess.value = false
   }, 3000)
+}
+
+function handleResetGamification() {
+  if (confirm('Are you sure you want to reset all achievement progress and Byte the desk pet stats?')) {
+    gamification.resetGamification()
+    gamificationResetSuccess.value = true
+    setTimeout(() => {
+      gamificationResetSuccess.value = false
+    }, 3000)
+  }
 }
 
 function handlePurgeDelaySelect(seconds: number) {
@@ -248,6 +267,18 @@ const smoothScrolling = computed({
         >
           <LayoutGrid :size="15" />
           <span>Tool Management</span>
+        </button>
+
+        <button
+          type="button"
+          class="settings-tab-btn"
+          :class="{ active: activeTab === 'arcade' }"
+          role="tab"
+          :aria-selected="activeTab === 'arcade'"
+          @click="activeTab = 'arcade'"
+        >
+          <Gamepad2 :size="15" />
+          <span>Arcade & Pet</span>
         </button>
 
         <button
@@ -599,7 +630,90 @@ const smoothScrolling = computed({
         </div>
       </div>
 
-      <!-- TAB 5: ABOUT & LICENSE -->
+      <!-- TAB 5: ARCADE & VIRTUAL PET -->
+      <div v-else-if="activeTab === 'arcade'" class="tab-pane" role="tabpanel">
+        <!-- Card 1: Virtual Desk Companion -->
+        <div class="setting-card">
+          <div class="setting-card-header">
+            <h4>Virtual Desk Companion ("Byte")</h4>
+            <span class="setting-hint">Enable or customize your interactive 8-bit cyber companion</span>
+          </div>
+
+          <div class="setting-item-row">
+            <div class="setting-item-text">
+              <span class="setting-item-title">Show Desk Companion</span>
+              <span class="setting-item-desc">Byte feeds on code payloads, celebrates formatting, and watches over your offline sessions.</span>
+            </div>
+            <M3Switch
+              :model-value="gamification.pet.enabled"
+              @update:model-value="gamification.togglePetEnabled($event)"
+            />
+          </div>
+
+          <div v-if="gamification.pet.enabled" class="pet-summary-box">
+            <div class="pet-avatar-large">🐥</div>
+            <div class="pet-summary-info">
+              <div class="pet-title-level">
+                <span class="pet-name-bold">{{ gamification.pet.name }}</span>
+                <span class="badge-level-pill">Level {{ gamification.pet.level }}</span>
+              </div>
+              <p class="pet-stats-text">
+                Devoured <strong>{{ (gamification.pet.totalFedBytes / 1024).toFixed(1) }} KB</strong> of code • Received <strong>{{ gamification.stats.petInteractions }}</strong> affection clicks
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card 2: 8-Bit Retro Audio Synthesizer -->
+        <div class="setting-card">
+          <div class="setting-card-header">
+            <h4>Retro 8-Bit Audio Effects</h4>
+            <span class="setting-hint">Web Audio API synthesized GameBoy-style sound effects</span>
+          </div>
+
+          <div class="setting-item-row">
+            <div class="setting-item-text">
+              <span class="setting-item-title">Sound Effects</span>
+              <span class="setting-item-desc">Play retro chimes when unlocking achievements, leveling up, or petting Byte.</span>
+            </div>
+            <M3Switch
+              :model-value="gamification.pet.soundEnabled"
+              @update:model-value="gamification.toggleSoundEnabled($event)"
+            />
+          </div>
+        </div>
+
+        <!-- Card 3: Reset Gamification Progress -->
+        <div class="setting-card">
+          <div class="setting-card-header">
+            <h4>Reset Gamification & Badges</h4>
+            <span class="setting-hint">Wipe all achievement progress and reset Byte to Level 1</span>
+          </div>
+
+          <p class="tool-mgmt-desc">
+            Currently unlocked: <strong>{{ gamification.unlockedCount }}</strong> of <strong>{{ gamification.totalCount }}</strong> trophies ({{ gamification.completionPercentage }}%).
+          </p>
+
+          <div class="reset-tool-row">
+            <M3Button
+              variant="outlined"
+              @click="handleResetGamification"
+            >
+              <template #icon>
+                <Trash2 :size="15" />
+              </template>
+              Reset Achievements & Pet Stats
+            </M3Button>
+
+            <span v-if="gamificationResetSuccess" class="reset-success-msg">
+              <CheckCircle2 :size="15" />
+              Gamification stats reset to factory default!
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 6: ABOUT & LICENSE -->
       <div v-else-if="activeTab === 'about'" class="tab-pane" role="tabpanel">
         <!-- Hero Brand Card -->
         <div class="about-brand-card">
@@ -1451,5 +1565,55 @@ const smoothScrolling = computed({
   text-align: center;
   font-style: italic;
   line-height: 1.4;
+}
+
+/* Pet & Arcade Styles in Settings */
+.pet-summary-box {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--md-sys-color-surface-container);
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--md-sys-shape-corner-medium);
+  margin-top: 0.75rem;
+}
+
+.pet-avatar-large {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.pet-summary-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pet-title-level {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pet-name-bold {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--md-sys-color-on-surface);
+}
+
+.badge-level-pill {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+.pet-stats-text {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--md-sys-color-on-surface-variant);
 }
 </style>

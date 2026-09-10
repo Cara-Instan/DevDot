@@ -35,7 +35,7 @@ import {
   PaneHeader,
   CopyButton
 } from '@/components'
-import { useSnapshotStore } from '@/stores'
+import { useSnapshotStore, useGamificationStore } from '@/stores'
 import {
   decodeJwt,
   verifyJwtSignature,
@@ -49,6 +49,7 @@ import type {
 } from '../types'
 
 const snapshotStore = useSnapshotStore()
+const gamificationStore = useGamificationStore()
 
 // State
 const rawToken = ref('')
@@ -293,8 +294,13 @@ const tokenTimeStatus = computed<'active' | 'expired' | 'future' | 'no-expiry'>(
   return 'no-expiry'
 })
 
+let isLoadingSample = false
+
 // Process Raw Token Input
-async function processToken(tokenStr: string) {
+async function processToken(
+  tokenStr: string,
+  triggerOptions: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean } = {}
+) {
   if (!tokenStr.trim()) {
     decoded.value = {
       header: { alg: 'HS256', typ: 'JWT' },
@@ -321,10 +327,18 @@ async function processToken(tokenStr: string) {
   const result = decodeJwt(tokenStr)
   decoded.value = result
 
-  if (result.isValidStructure && !isUpdatingFromCodeEditor) {
-    headerJsonText.value = JSON.stringify(result.header, null, 2)
-    payloadJsonText.value = JSON.stringify(result.payload, null, 2)
-    jsonParseError.value = {}
+  if (result.isValidStructure) {
+    gamificationStore.trackAction({
+      type: 'jwt_decode',
+      isSample: triggerOptions.isSample,
+      isMount: triggerOptions.isMount,
+      isAutomatic: triggerOptions.isAutomatic
+    })
+    if (!isUpdatingFromCodeEditor) {
+      headerJsonText.value = JSON.stringify(result.header, null, 2)
+      payloadJsonText.value = JSON.stringify(result.payload, null, 2)
+      jsonParseError.value = {}
+    }
   }
 
   await performVerification()
@@ -406,8 +420,10 @@ async function loadSample(type: 'active' | 'expired' | 'rbac' | 'oidc') {
     algorithm: sample.header.alg as any
   })
 
+  isLoadingSample = true
   rawToken.value = token
-  await processToken(token)
+  await processToken(token, { isSample: true })
+  isLoadingSample = false
 }
 
 // Generate Random 256-bit Secret Key
@@ -477,7 +493,7 @@ function formatClaimDate(timestampSec: any): string {
 
 // Watchers
 watch(rawToken, (newVal) => {
-  if (!isUpdatingFromCodeEditor) {
+  if (!isUpdatingFromCodeEditor && !isLoadingSample) {
     processToken(newVal)
   }
 })
@@ -520,7 +536,7 @@ watch(
         isBase64Secret.value = newState.isBase64Secret
       }
       isHydrating = false
-      await processToken(rawToken.value)
+      await processToken(rawToken.value, { isAutomatic: true })
     }
   },
   { deep: true }
@@ -538,7 +554,7 @@ onMounted(async () => {
     rawToken.value = saved.rawToken
     secretKey.value = saved.secretKey ?? 'your-256-bit-secret'
     isBase64Secret.value = saved.isBase64Secret ?? false
-    await processToken(rawToken.value)
+    await processToken(rawToken.value, { isMount: true })
   } else {
     await loadSample('active')
   }

@@ -24,7 +24,8 @@ import {
   EditorFindBar,
   CopyButton
 } from '@/components'
-import { useSnapshotStore } from '@/stores'
+import { useSnapshotStore, useGamificationStore } from '@/stores'
+import { computePayloadHash } from '@/core/gamification'
 import { openNativeFileDialog, saveNativeFileDialog } from '@/core/native'
 import { generateTypesFromJson } from '../services/type-generators'
 import { safeParseJson } from '../services/json-parser'
@@ -42,6 +43,7 @@ import type {
 } from '../types'
 
 const snapshotStore = useSnapshotStore()
+const gamificationStore = useGamificationStore()
 
 // Sample presets for quick testing and demonstrations
 const SAMPLES = {
@@ -110,6 +112,11 @@ const SAMPLES = {
   // Trailing comma below:
 }`
   }
+}
+
+function isPresetSample(text: string): boolean {
+  const trimmed = text.trim()
+  return Object.values(SAMPLES).some((s) => s.content.trim() === trimmed)
 }
 
 const props = defineProps<{
@@ -490,7 +497,13 @@ function toggleOutputFind() {
 }
 
 // Generation Logic
-function handleGenerate() {
+function handleGenerate(
+  triggerOptions?: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean; isOptionChange?: boolean } | Event
+) {
+  const opts = (triggerOptions && typeof triggerOptions === 'object' && !('target' in triggerOptions))
+    ? triggerOptions
+    : {}
+
   genError.value = null
   repairNotices.value = []
 
@@ -536,14 +549,27 @@ function handleGenerate() {
     lastResult.value = res
     outputCode.value = res.code
     executionTimeMs.value = Math.round((performance.now() - startTime) * 100) / 100
+    const isSample = opts.isSample || isPresetSample(inputJson.value)
+    gamificationStore.trackAction({
+      type: 'json_types',
+      bytes: inputJson.value.length,
+      isSample,
+      isMount: opts.isMount,
+      isAutomatic: opts.isAutomatic,
+      isOptionChange: opts.isOptionChange,
+      payloadHash: computePayloadHash(inputJson.value)
+    })
   } catch (err: any) {
     genError.value = err.message || 'Generation error'
+    if (!opts.isMount && !opts.isAutomatic) {
+      gamificationStore.reportSyntaxError()
+    }
   }
 }
 
 function selectTarget(target: TargetLanguage) {
   selectedTarget.value = target
-  handleGenerate()
+  handleGenerate({ isOptionChange: true })
 }
 
 function handleExplicitRepair() {
@@ -577,7 +603,7 @@ watch(
     if (isHydrating || !autoGenerate.value) return
     clearTimeout(liveGenTimer)
     liveGenTimer = setTimeout(() => {
-      handleGenerate()
+      handleGenerate({ isAutomatic: true })
     }, 200)
   },
   { deep: true }
@@ -586,7 +612,7 @@ watch(
 function handleLoadPreset(key: keyof typeof SAMPLES) {
   inputJson.value = SAMPLES[key].content
   dismissRepairNotice.value = false
-  handleGenerate()
+  handleGenerate({ isSample: true })
 }
 
 function handleClear() {
@@ -700,7 +726,7 @@ function formatBytes(bytes: number): string {
 }
 
 onMounted(() => {
-  handleGenerate()
+  handleGenerate({ isMount: true })
   document.addEventListener('fullscreenchange', handleFullscreenChange)
   window.addEventListener('keydown', handleKeyDown)
 })

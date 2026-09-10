@@ -11,16 +11,18 @@ import {
   FolderArchive,
   Settings,
   Check,
-  X
+  X,
+  Trophy
 } from 'lucide-vue-next'
 import appLogo from '@/assets/logo.png'
 
 import { M3Tooltip } from '@/components/ui'
-import { useNavigationStore, ToolCategory } from '@/stores'
+import { useNavigationStore, useGamificationStore, ToolCategory } from '@/stores'
 import { useTheme } from '@/composables'
 import ToolIcon from './ToolIcon.vue'
 
 const navStore = useNavigationStore()
+const gamification = useGamificationStore()
 const { isDark, themeMode, isHighContrast, setThemeMode, toggleHighContrast } = useTheme()
 
 // Tool Switcher Dropdown State
@@ -226,6 +228,18 @@ const switcherTools = computed(() => {
 
     <!-- Right: Snapshot, Settings & Theme Controls -->
     <div class="top-bar-right">
+      <!-- Trophy Room Pill -->
+      <M3Tooltip :text="`Trophy Room: ${gamification.unlockedCount} of ${gamification.totalCount} Unlocked (${gamification.completionPercentage}%)`">
+        <button
+          type="button"
+          class="topbar-action-btn"
+          @click="navStore.selectTool('system-overview')"
+        >
+          <Trophy :size="14" style="color: #fbbf24;" />
+          <span class="btn-text-desktop">{{ gamification.unlockedCount }}/{{ gamification.totalCount }}</span>
+        </button>
+      </M3Tooltip>
+
       <!-- Snapshot Manager Button -->
       <M3Tooltip text="Session Snapshot (.toolkit) - Backup & Restore">
         <button

@@ -27,7 +27,8 @@ import {
   CopyButton
 } from '@/components'
 import { useExecutionEngine } from '@/composables'
-import { useSnapshotStore } from '@/stores'
+import { useSnapshotStore, useGamificationStore } from '@/stores'
+import { computePayloadHash } from '@/core/gamification'
 import { openNativeFileDialog, saveNativeFileDialog } from '@/core/native'
 import type { IndentType, JsonFormatOptions, JsonFormatResult, SortKeysOrder } from '../types'
 
@@ -37,6 +38,7 @@ const props = defineProps<{
 
 const { execute, isExecuting } = useExecutionEngine()
 const snapshotStore = useSnapshotStore()
+const gamificationStore = useGamificationStore()
 
 const currentTabId = computed(() => props.tabId || 'json-format')
 
@@ -71,6 +73,11 @@ const SAMPLES = {
     name: 'Cloud Microservice Config',
     content: `{\n  "serviceName": "auth-gateway",\n  "environment": "production",\n  "port": 443,\n  "replicas": 8,\n  "rateLimit": {\n    "maxRequests": 500,\n    "windowMs": 60000,\n    "burstTolerance": 50\n  },\n  "corsOrigins": [\n    "https://devdot.tools",\n    "https://app.devdot.tools"\n  ],\n  "logging": {\n    "level": "info",\n    "destination": "cloudwatch"\n  },\n  "tls": {\n    "enabled": true,\n    "minVersion": "1.3"\n  }\n}`
   }
+}
+
+function isPresetSample(text: string): boolean {
+  const trimmed = text.trim()
+  return Object.values(SAMPLES).some((s) => s.content.trim() === trimmed)
 }
 
 // Initial state from snapshot store
@@ -287,7 +294,10 @@ function toggleOutputFind() {
 }
 
 // Formatting Engine Actions
-async function handleFormat(minify = false) {
+async function handleFormat(
+  minify = false,
+  triggerOptions: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean } = {}
+) {
   formatError.value = null
   repairNotices.value = []
   dismissRepairNotice.value = false
@@ -325,32 +335,51 @@ async function handleFormat(minify = false) {
         if (res.result.repaired && res.result.repairs.length > 0) {
           repairNotices.value = res.result.repairs
         }
+        const isSample = triggerOptions.isSample || isPresetSample(inputJson.value)
+        gamificationStore.trackAction({
+          type: 'json_format',
+          bytes: inputJson.value.length,
+          isMinified: minify,
+          isSample,
+          isMount: triggerOptions.isMount,
+          isAutomatic: triggerOptions.isAutomatic,
+          payloadHash: computePayloadHash(inputJson.value)
+        })
       } else {
         formatError.value = res.result.error || 'Invalid JSON syntax'
+        if (!triggerOptions.isMount && !triggerOptions.isAutomatic) {
+          gamificationStore.reportSyntaxError()
+        }
       }
     } else {
       formatError.value = res.error || 'Execution failed'
+      if (!triggerOptions.isMount && !triggerOptions.isAutomatic) {
+        gamificationStore.reportSyntaxError()
+      }
     }
   } catch (err: any) {
     formatError.value = err.message || 'Formatting failed'
+    if (!triggerOptions.isMount && !triggerOptions.isAutomatic) {
+      gamificationStore.reportSyntaxError()
+    }
   }
 }
 
 function toggleAutoPrettify() {
   autoPrettify.value = !autoPrettify.value
   if (autoPrettify.value) {
-    handleFormat(isMinified.value)
+    handleFormat(isMinified.value, { isAutomatic: true })
   }
 }
 
 function handlePrettifyClick() {
   isMinified.value = false
-  handleFormat(false)
+  handleFormat(false, { isAutomatic: false })
 }
 
 function handleMinifyClick() {
   isMinified.value = true
-  handleFormat(true)
+  handleFormat(true, { isAutomatic: false })
 }
 
 function handleIndentChange(type: IndentType) {
@@ -404,7 +433,7 @@ function handleLoadPreset(presetKey: keyof typeof SAMPLES) {
   if (preset) {
     inputJson.value = preset.content
     if (autoPrettify.value) {
-      handleFormat(isMinified.value)
+      handleFormat(isMinified.value, { isSample: true })
     }
   }
 }
@@ -520,13 +549,13 @@ watch(inputJson, () => {
   if (!autoPrettify.value) return
   clearTimeout(liveFormatTimer)
   liveFormatTimer = setTimeout(() => {
-    handleFormat(isMinified.value)
+    handleFormat(isMinified.value, { isAutomatic: true })
   }, 250)
 })
 
 onMounted(() => {
   if (autoPrettify.value) {
-    handleFormat(isMinified.value)
+    handleFormat(isMinified.value, { isMount: true })
   }
   document.addEventListener('fullscreenchange', handleFullscreenChange)
   window.addEventListener('keydown', handleKeyDown)

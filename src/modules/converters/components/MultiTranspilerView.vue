@@ -8,7 +8,8 @@ import {
   AlertCircle
 } from 'lucide-vue-next'
 import { SplitEditor } from '@/components'
-import { useSnapshotStore } from '@/stores'
+import { useSnapshotStore, useGamificationStore } from '@/stores'
+import { computePayloadHash } from '@/core/gamification'
 import { transpileData } from '../services/transpiler-service'
 import type { DataFormat, TranspileOptions, TranspileResult } from '../types'
 
@@ -17,6 +18,7 @@ const props = defineProps<{
 }>()
 
 const snapshotStore = useSnapshotStore()
+const gamificationStore = useGamificationStore()
 const currentTabId = computed(() => props.tabId || 'multi-transpiler')
 
 // State
@@ -103,6 +105,11 @@ SKU-003,USB-C Docking Hub,Accessories,0,89.00,false`
   }
 }
 
+function isPresetSample(text: string): boolean {
+  const trimmed = text.trim()
+  return Object.values(SAMPLES).some((s) => s.content.trim() === trimmed)
+}
+
 // Compute editor languages
 const sourceEditorLang = computed(() => {
   if (sourceFormat.value === 'json') return 'json'
@@ -117,7 +124,13 @@ const targetEditorLang = computed(() => {
 })
 
 // Core Transpile Execution
-function handleTranspile() {
+function handleTranspile(
+  triggerOptions?: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean; isOptionChange?: boolean } | Event
+) {
+  const opts = (triggerOptions && typeof triggerOptions === 'object' && !('target' in triggerOptions))
+    ? triggerOptions
+    : {}
+
   errorMsg.value = null
   warnings.value = []
 
@@ -152,9 +165,24 @@ function handleTranspile() {
     if (res.warnings) {
       warnings.value = res.warnings
     }
+    const isSample = opts.isSample || isPresetSample(inputText.value)
+    gamificationStore.trackAction({
+      type: 'transpile',
+      from: sourceFormat.value,
+      to: targetFormat.value,
+      bytes: inputText.value.length,
+      isSample,
+      isMount: opts.isMount,
+      isAutomatic: opts.isAutomatic,
+      isOptionChange: opts.isOptionChange,
+      payloadHash: computePayloadHash(inputText.value)
+    })
   } catch (err: any) {
     errorMsg.value = err.message || 'Transpilation error'
     outputText.value = ''
+    if (!opts.isMount && !opts.isAutomatic) {
+      gamificationStore.reportSyntaxError()
+    }
   }
 }
 
@@ -170,7 +198,7 @@ function handleSwapFormats() {
   if (prevOutput) {
     inputText.value = prevOutput
   }
-  handleTranspile()
+  handleTranspile({ isOptionChange: true })
 }
 
 // Load sample preset
@@ -182,7 +210,7 @@ function loadSample(key: string) {
       targetFormat.value = sample.format === 'json' ? 'yaml' : 'json'
     }
     inputText.value = sample.content
-    handleTranspile()
+    handleTranspile({ isSample: true })
   }
 }
 
@@ -217,7 +245,7 @@ watch(
     if (isHydrating) return
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
-      handleTranspile()
+      handleTranspile({ isAutomatic: true })
 
       // Save state to snapshot store
       snapshotStore.setTabState(currentTabId.value, 'multi-transpiler', {
@@ -275,9 +303,9 @@ onMounted(() => {
     if (saved.csvQuotes !== undefined) csvQuotes.value = saved.csvQuotes
     if (saved.flattenNested !== undefined) flattenNested.value = saved.flattenNested
   } else {
-    loadSample('users')
+    inputText.value = SAMPLES.users.content
   }
-  handleTranspile()
+  handleTranspile({ isMount: true })
 })
 </script>
 

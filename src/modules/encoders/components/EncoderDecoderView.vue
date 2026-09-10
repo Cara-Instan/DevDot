@@ -27,7 +27,7 @@ import {
   CopyButton
 } from '@/components'
 import { useExecutionEngine } from '@/composables'
-import { useSnapshotStore } from '@/stores'
+import { useSnapshotStore, useGamificationStore } from '@/stores'
 import { openNativeFileDialog, saveNativeFileDialog } from '@/core/native'
 import type {
   EncoderMode,
@@ -40,6 +40,7 @@ import type {
 
 const { execute } = useExecutionEngine()
 const snapshotStore = useSnapshotStore()
+const gamificationStore = useGamificationStore()
 
 // Rich Presets per Mode
 const PRESETS: Record<EncoderMode, { name: string; content: string; direction?: ConversionDirection }[]> = {
@@ -116,6 +117,11 @@ const PRESETS: Record<EncoderMode, { name: string; content: string; direction?: 
       direction: 'encode'
     }
   ]
+}
+
+function isPresetSample(text: string): boolean {
+  const trimmed = text.trim()
+  return Object.values(PRESETS).some((list) => list.some((p) => p.content.trim() === trimmed))
 }
 
 const props = defineProps<{
@@ -357,7 +363,9 @@ function getActiveOptions(): Record<string, any> {
 }
 
 // Execute transformation
-async function handleTransform() {
+async function handleTransform(
+  triggerOptions: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean } = {}
+) {
   error.value = null
   if (!inputText.value) {
     outputText.value = ''
@@ -376,6 +384,15 @@ async function handleTransform() {
     if (res.success && res.result) {
       outputText.value = res.result.output
       executionTimeMs.value = res.executionTimeMs
+      const isSample = triggerOptions.isSample || isPresetSample(inputText.value)
+      gamificationStore.trackAction({
+        type: 'encoder_action',
+        algo: activeMode.value,
+        bytes: inputText.value.length,
+        isSample,
+        isMount: triggerOptions.isMount,
+        isAutomatic: triggerOptions.isAutomatic
+      })
     } else {
       error.value = res.error || 'Transformation failed'
       outputText.value = ''
@@ -411,7 +428,7 @@ function handleSelectPreset(preset: { content: string; direction?: ConversionDir
   if (preset.direction) {
     direction.value = preset.direction
   }
-  handleTransform()
+  handleTransform({ isSample: true })
   isPresetMenuOpen.value = false
 }
 
@@ -516,6 +533,7 @@ function handleKeyDown(e: KeyboardEvent) {
 
 // Watchers for reactive auto-transformation with debounce
 let debounceTimer: any = null
+let isInitialTransformRun = true
 watch(
   [
     inputText,
@@ -536,8 +554,10 @@ watch(
   () => {
     if (liveTransform.value) {
       clearTimeout(debounceTimer)
+      const isMount = isInitialTransformRun
+      isInitialTransformRun = false
       debounceTimer = setTimeout(() => {
-        handleTransform()
+        handleTransform({ isMount, isAutomatic: true })
       }, 50)
     }
   },

@@ -8,7 +8,8 @@ import {
   Lock
 } from 'lucide-vue-next'
 import { SplitEditor } from '@/components'
-import { useSnapshotStore } from '@/stores'
+import { useSnapshotStore, useGamificationStore } from '@/stores'
+import { computePayloadHash } from '@/core/gamification'
 import { convertCurlCommand } from '../services/curl-parser-service'
 import type {
   CurlTargetLanguage,
@@ -21,6 +22,7 @@ const props = defineProps<{
 }>()
 
 const snapshotStore = useSnapshotStore()
+const gamificationStore = useGamificationStore()
 const currentTabId = computed(() => props.tabId || 'curl-converter')
 
 // State
@@ -78,6 +80,11 @@ const SAMPLES: Record<string, { title: string; curl: string }> = {
   }
 }
 
+function isPresetSample(curl: string): boolean {
+  const trimmed = curl.trim()
+  return Object.values(SAMPLES).some((s) => s.curl.trim() === trimmed)
+}
+
 // Compute code editor syntax language
 const outputEditorLang = computed(() => {
   const found = TARGET_LANGUAGES.find((t) => t.id === targetLanguage.value)
@@ -85,7 +92,9 @@ const outputEditorLang = computed(() => {
 })
 
 // Conversion execution
-function handleConvert() {
+function handleConvert(
+  triggerOptions: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean; isOptionChange?: boolean } = {}
+) {
   errorMsg.value = null
 
   if (!rawCurl.value.trim()) {
@@ -107,10 +116,23 @@ function handleConvert() {
     outputCode.value = res.code
     parsedRequest.value = res.parsed
     executionTimeMs.value = res.executionTimeMs || 0
+    const isSample = triggerOptions.isSample || isPresetSample(rawCurl.value)
+    gamificationStore.trackAction({
+      type: 'curl_convert',
+      bytes: rawCurl.value.length,
+      isSample,
+      isMount: triggerOptions.isMount,
+      isAutomatic: triggerOptions.isAutomatic,
+      isOptionChange: triggerOptions.isOptionChange,
+      payloadHash: computePayloadHash(rawCurl.value)
+    })
   } catch (err: any) {
     errorMsg.value = err.message || 'Failed to parse cURL command'
     outputCode.value = ''
     parsedRequest.value = null
+    if (!triggerOptions.isMount && !triggerOptions.isAutomatic) {
+      gamificationStore.reportSyntaxError()
+    }
   }
 }
 
@@ -119,7 +141,7 @@ function loadSample(key: string) {
   const sample = SAMPLES[key]
   if (sample) {
     rawCurl.value = sample.curl
-    handleConvert()
+    handleConvert({ isSample: true })
   }
 }
 
@@ -141,7 +163,7 @@ watch(
     if (isHydrating) return
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
-      handleConvert()
+      handleConvert({ isAutomatic: true })
 
       // Save state to snapshot store
       snapshotStore.setTabState(currentTabId.value, 'curl-converter', {
@@ -181,9 +203,9 @@ onMounted(() => {
     if (saved.useAsyncAwait !== undefined) useAsyncAwait.value = saved.useAsyncAwait
     if (saved.includeErrorHandling !== undefined) includeErrorHandling.value = saved.includeErrorHandling
   } else {
-    loadSample('jsonPost')
+    rawCurl.value = SAMPLES.jsonPost.curl
   }
-  handleConvert()
+  handleConvert({ isMount: true })
 })
 </script>
 

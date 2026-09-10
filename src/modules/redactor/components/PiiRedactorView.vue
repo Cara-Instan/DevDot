@@ -47,7 +47,7 @@ import {
   CopyButton
 } from '@/components'
 import { CodeEditor } from '@/components/editor'
-import { useSnapshotStore, useSecurityStore } from '@/stores'
+import { useSnapshotStore, useSecurityStore, useGamificationStore } from '@/stores'
 import { openNativeFileDialog, saveNativeFileDialog } from '@/core/native'
 import {
   DEFAULT_PII_RULES,
@@ -63,6 +63,7 @@ import type {
 
 const snapshotStore = useSnapshotStore()
 const securityStore = useSecurityStore()
+const gamificationStore = useGamificationStore()
 
 // Root & Fullscreen
 const rootRef = ref<HTMLDivElement | null>(null)
@@ -132,6 +133,11 @@ MongoDB URI: mongodb+srv://db_admin:SecretPass99@cluster0.devdot.mongodb.net/app
 ID: 1002 | Name: Benji Dunn | Email: benji@imf-tech.org | Phone: (415) 892-1002 | SSN: 992-10-8831 | IP: 198.51.100.45
 ID: 1003 | Name: Luther Stickell | Email: luther@hacker-net.io | Phone: +44 20 7946 0912 | Password: correct-horse-battery-staple`
   }
+}
+
+function isPresetSample(text: string): boolean {
+  const trimmed = text.trim()
+  return Object.values(SAMPLES).some((s) => s.content.trim() === trimmed)
 }
 
 const props = defineProps<{
@@ -397,7 +403,13 @@ const outputMatches = computed(() => {
 const outputMatchCount = computed(() => outputMatches.value.length)
 
 // Redact execution function
-function handleRedact() {
+function handleRedact(
+  triggerOptions?: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean } | Event
+) {
+  const opts = (triggerOptions && typeof triggerOptions === 'object' && !('target' in triggerOptions))
+    ? triggerOptions
+    : {}
+
   if (!inputText.value.trim()) {
     outputText.value = ''
     totalMatches.value = 0
@@ -421,6 +433,17 @@ function handleRedact() {
   matchesList.value = result.matches
   tokenMap.value = result.tokenMap || {}
   executionTimeMs.value = result.executionTimeMs
+  if (result.totalMatches > 0) {
+    const isSample = opts.isSample || isPresetSample(inputText.value)
+    gamificationStore.trackAction({
+      type: 'pii_redact',
+      count: result.totalMatches,
+      bytes: inputText.value.length,
+      isSample,
+      isMount: opts.isMount,
+      isAutomatic: opts.isAutomatic
+    })
+  }
 
   // Save to snapshot store
   if (!isHydrating) {
@@ -444,10 +467,12 @@ let isHydrating = false
 
 // Debounced auto-redact
 let debounceTimer: any = null
-function queueRedact() {
+function queueRedact(
+  triggerOptions: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean } = { isAutomatic: true }
+) {
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
-    handleRedact()
+    handleRedact(triggerOptions)
   }, 150)
 }
 
@@ -914,7 +939,7 @@ onMounted(() => {
   if (!inputText.value) {
     loadSample('serverAccessLog')
   } else {
-    handleRedact()
+    handleRedact({ isMount: true })
   }
   document.addEventListener('fullscreenchange', handleFullscreenChange)
   window.addEventListener('keydown', handleKeyDown)

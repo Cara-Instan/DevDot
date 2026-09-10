@@ -4,5 +4,4 @@ export * from './security'
 export * from './pwa'
 export * from './settings'
 export * from './tabs'
-
-
+export * from './gamification'

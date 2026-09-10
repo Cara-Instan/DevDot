@@ -8,16 +8,20 @@ import {
   RotateCcw,
   LayoutGrid,
   List,
-  AlertTriangle
+  AlertTriangle,
+  Trophy,
+  Boxes
 } from 'lucide-vue-next'
 import {
   M3Button,
   ToolIcon,
   SearchInput
 } from '@/components'
+import { TrophyRoom } from '@/components/gamification'
 import {
   useNavigationStore,
   useSettingsStore,
+  useGamificationStore,
   DEFAULT_TOOL_ORDER,
   ToolCategory
 } from '@/stores'
@@ -25,6 +29,10 @@ import appLogo from '@/assets/logo.png'
 
 const navStore = useNavigationStore()
 const settingsStore = useSettingsStore()
+const gamification = useGamificationStore()
+
+// View Mode: Tools Catalog vs Trophies
+const overviewActiveTab = ref<'catalog' | 'trophies'>('catalog')
 
 // Dashboard View Mode & Filters
 const overviewSearch = ref('')
@@ -221,8 +229,37 @@ function resetDragState() {
       </div>
     </header>
 
-    <!-- Pinned Favorites (If Any) -->
-    <section v-if="navStore.favoriteTools.length > 0" class="pinned-section">
+    <!-- View Switcher Tabs: Tool Catalog vs Trophy Room -->
+    <div class="overview-section-switcher">
+      <button
+        type="button"
+        class="switcher-tab-btn"
+        :class="{ active: overviewActiveTab === 'catalog' }"
+        @click="overviewActiveTab = 'catalog'"
+      >
+        <Boxes :size="15" />
+        <span>Tools Catalog</span>
+        <span class="tab-counter-badge">{{ allNavTools.length }}</span>
+      </button>
+
+      <button
+        type="button"
+        class="switcher-tab-btn"
+        :class="{ active: overviewActiveTab === 'trophies' }"
+        @click="overviewActiveTab = 'trophies'"
+      >
+        <Trophy :size="15" class="tab-trophy-icon" />
+        <span>Trophies & Badges</span>
+        <span class="tab-counter-badge tab-badge-amber">
+          {{ gamification.unlockedCount }}/{{ gamification.totalCount }}
+        </span>
+      </button>
+    </div>
+
+    <!-- Tab 1: Tools Catalog -->
+    <template v-if="overviewActiveTab === 'catalog'">
+      <!-- Pinned Favorites (If Any) -->
+      <section v-if="navStore.favoriteTools.length > 0" class="pinned-section">
       <div class="pinned-header">
         <Star :size="15" class="star-icon-filled" />
         <span class="pinned-title">Pinned Favorites</span>
@@ -462,7 +499,13 @@ function resetDragState() {
         </M3Button>
       </div>
     </section>
-  </div>
+  </template>
+
+  <!-- Tab 2: Trophies & Badges Gallery -->
+  <template v-else>
+    <TrophyRoom />
+  </template>
+</div>
 </template>
 
 <style scoped>
@@ -475,6 +518,68 @@ function resetDragState() {
   font-family: var(--md-sys-typescale-font-family);
   color: var(--md-sys-color-on-surface);
   padding-bottom: 2rem;
+}
+
+/* View Switcher Tabs */
+.overview-section-switcher {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  background: var(--md-sys-color-surface-container-low, #181a1f);
+  border: 1px solid var(--md-sys-color-outline-variant, rgba(255, 255, 255, 0.08));
+  border-radius: 10px;
+  width: fit-content;
+}
+
+.switcher-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: var(--md-sys-color-on-surface-variant, #9ca3af);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.switcher-tab-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.switcher-tab-btn.active {
+  background: var(--md-sys-color-surface-container-highest, #2a2d35);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.tab-trophy-icon {
+  animation: gentle-spin 4s infinite ease-in-out alternate;
+}
+
+@keyframes gentle-spin {
+  0% { transform: rotate(-5deg); }
+  100% { transform: rotate(5deg); }
+}
+
+.tab-counter-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #cbd5e1;
+}
+
+.tab-badge-amber {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
 }
 
 /* Compact Intro Banner */
