@@ -44,7 +44,26 @@ function loadPersistedTabs(): WorkspaceTab[] {
           (t) => t && typeof t.id === 'string' && typeof t.toolId === 'string'
         )
         if (validTabs.length > 0) {
-          return validTabs
+          // Deduplicate system-overview: keep at most one and ensure it is pinned
+          let overviewTab: WorkspaceTab | null = null
+          const nonOverviewTabs: WorkspaceTab[] = []
+
+          for (const t of validTabs) {
+            if (t.toolId === 'system-overview') {
+              if (!overviewTab) {
+                overviewTab = { ...t, isPinned: true }
+              }
+              // drop any duplicate system-overview tabs
+            } else {
+              nonOverviewTabs.push(t)
+            }
+          }
+
+          if (!overviewTab) {
+            overviewTab = getDefaultTabs()[0]
+          }
+
+          return [overviewTab, ...nonOverviewTabs]
         }
       }
     }
@@ -135,6 +154,17 @@ export const useTabStore = defineStore('tabs', () => {
   ): string {
     const toolDef = ALL_TOOLS.find((t) => t.id === toolId)
     const title = toolDef ? toolDef.name : toolId
+
+    // System Overview is a strict singleton workspace anchor
+    if (toolId === 'system-overview') {
+      const existingOverview = tabs.value.find((t) => t.toolId === 'system-overview')
+      if (existingOverview) {
+        if (options?.activate !== false) {
+          setActiveTab(existingOverview.id)
+        }
+        return existingOverview.id
+      }
+    }
 
     // If forceNew is not set, check if an existing tab with this toolId is open
     if (!options?.forceNew) {
@@ -406,7 +436,16 @@ export const useTabStore = defineStore('tabs', () => {
   function restoreTabsFromSnapshot(snapshotTabs: { id: string; toolId: string; title: string }[], activeId?: string) {
     if (!snapshotTabs || snapshotTabs.length === 0) return
 
-    const newTabs: WorkspaceTab[] = snapshotTabs.map((st) => {
+    let overviewSeen = false
+    const sanitizedSnapshotTabs = snapshotTabs.filter((st) => {
+      if (st.toolId === 'system-overview') {
+        if (overviewSeen) return false
+        overviewSeen = true
+      }
+      return true
+    })
+
+    const newTabs: WorkspaceTab[] = sanitizedSnapshotTabs.map((st) => {
       const toolDef = ALL_TOOLS.find((t) => t.id === st.toolId)
       return {
         id: st.id,
@@ -418,6 +457,10 @@ export const useTabStore = defineStore('tabs', () => {
         lastActiveAt: Date.now()
       }
     })
+
+    if (!overviewSeen) {
+      newTabs.unshift(getDefaultTabs()[0])
+    }
 
     tabs.value = newTabs
     if (activeId && newTabs.some((t) => t.id === activeId || t.toolId === activeId)) {

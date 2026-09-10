@@ -127,6 +127,15 @@ function toggleNewTabPopover() {
 }
 
 function handleSelectNewTool(toolId: string) {
+  if (toolId === 'system-overview') {
+    tabStore.openTab(toolId, { forceNew: false, activate: true })
+    navStore.activeToolId = toolId
+    isNewTabPopoverOpen.value = false
+    nextTick(() => {
+      scrollToActiveTab()
+    })
+    return
+  }
   tabStore.openTab(toolId, { forceNew: true, activate: true })
   navStore.activeToolId = toolId
   isNewTabPopoverOpen.value = false
@@ -184,11 +193,12 @@ function handleDragEnd() {
   dragOverTabIndex.value = null
 }
 
-// Filtered tools for New Tab Popover
+// Filtered tools for New Tab Popover (System Overview is excluded as it is the singleton Home anchor)
 const filteredNewTools = computed(() => {
+  const tools = ALL_TOOLS.filter((t) => t.id !== 'system-overview')
   const q = newTabSearch.value.toLowerCase().trim()
-  if (!q) return ALL_TOOLS
-  return ALL_TOOLS.filter(
+  if (!q) return tools
+  return tools.filter(
     (t) =>
       t.name.toLowerCase().includes(q) ||
       t.description.toLowerCase().includes(q) ||
