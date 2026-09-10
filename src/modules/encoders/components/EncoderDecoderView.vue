@@ -5,8 +5,6 @@ import {
   Download,
   Upload,
   RotateCcw,
-  Check,
-  Copy,
   CheckCircle2,
   AlertCircle,
   Clock,
@@ -25,10 +23,11 @@ import {
 import {
   CodeEditor,
   SplitPane,
-  M3Tooltip
+  M3Tooltip,
+  CopyButton
 } from '@/components'
 import { useExecutionEngine } from '@/composables'
-import { useSnapshotStore, useSecurityStore } from '@/stores'
+import { useSnapshotStore } from '@/stores'
 import { openNativeFileDialog, saveNativeFileDialog } from '@/core/native'
 import type {
   EncoderMode,
@@ -41,7 +40,6 @@ import type {
 
 const { execute } = useExecutionEngine()
 const snapshotStore = useSnapshotStore()
-const securityStore = useSecurityStore()
 
 // Rich Presets per Mode
 const PRESETS: Record<EncoderMode, { name: string; content: string; direction?: ConversionDirection }[]> = {
@@ -182,8 +180,6 @@ const htmlNonAsciiOnly = ref(initialSaved.htmlNonAsciiOnly)
 // UI Feedback States
 const error = ref<string | null>(null)
 const executionTimeMs = ref<number | null>(null)
-const isInputCopied = ref(false)
-const isOutputCopied = ref(false)
 const isFullscreen = ref(false)
 const mobileTab = ref<'both' | 'input' | 'output'>('both')
 const showImagePreview = ref(true)
@@ -448,36 +444,7 @@ function handleClear() {
   executionTimeMs.value = null
 }
 
-// Copy Handlers
-async function handleCopyOutput() {
-  if (!outputText.value) return
-  try {
-    const ok = await securityStore.copyToClipboard(outputText.value, { label: 'Encoded/Decoded Output' })
-    if (ok) {
-      isOutputCopied.value = true
-      setTimeout(() => {
-        isOutputCopied.value = false
-      }, 2000)
-    }
-  } catch (err) {
-    console.error('Failed to copy', err)
-  }
-}
 
-async function handleCopyInput() {
-  if (!inputText.value) return
-  try {
-    const ok = await securityStore.copyToClipboard(inputText.value, { label: 'Input Text' })
-    if (ok) {
-      isInputCopied.value = true
-      setTimeout(() => {
-        isInputCopied.value = false
-      }, 2000)
-    }
-  } catch (err) {
-    console.error('Failed to copy', err)
-  }
-}
 
 // File Upload
 async function handleUploadInput() {
@@ -976,18 +943,13 @@ onBeforeUnmount(() => {
                 </M3Tooltip>
 
                 <!-- Copy Input -->
-                <M3Tooltip :text="isInputCopied ? 'Copied!' : 'Copy Input'" placement="top">
-                  <button
-                    type="button"
-                    class="pane-icon-btn"
-                    :class="{ active: isInputCopied }"
-                    :disabled="!inputText"
-                    aria-label="Copy Input"
-                    @click="handleCopyInput"
-                  >
-                    <component :is="isInputCopied ? Check : Copy" :size="13" />
-                  </button>
-                </M3Tooltip>
+                <CopyButton
+                  :text="inputText"
+                  label="Copy Input"
+                  copied-label="Copied!"
+                  :icon-size="13"
+                  :disabled="!inputText"
+                />
 
                 <!-- Clear Input -->
                 <M3Tooltip text="Clear Input" placement="top">
@@ -1064,18 +1026,13 @@ onBeforeUnmount(() => {
                 </M3Tooltip>
 
                 <!-- Copy Output -->
-                <M3Tooltip :text="isOutputCopied ? 'Copied to Clipboard!' : 'Copy Result'" placement="top">
-                  <button
-                    type="button"
-                    class="pane-icon-btn copy-primary-btn"
-                    :class="{ active: isOutputCopied }"
-                    :disabled="!outputText"
-                    aria-label="Copy Output"
-                    @click="handleCopyOutput"
-                  >
-                    <component :is="isOutputCopied ? Check : Copy" :size="13" />
-                  </button>
-                </M3Tooltip>
+                <CopyButton
+                  :text="outputText"
+                  label="Copy Result"
+                  copied-label="Copied to Clipboard!"
+                  :icon-size="13"
+                  :disabled="!outputText"
+                />
 
                 <!-- Download Output -->
                 <M3Tooltip text="Download Result File" placement="top">

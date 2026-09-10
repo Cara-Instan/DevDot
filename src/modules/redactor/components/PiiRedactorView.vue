@@ -32,8 +32,6 @@ import {
   Shield,
   Columns2,
   Rows3,
-  ChevronUp,
-  ChevronDown,
   Sparkles,
   Fingerprint,
   Tag,
@@ -44,7 +42,9 @@ import {
   M3TextField,
   M3Dialog,
   M3Tooltip,
-  SplitPane
+  SplitPane,
+  EditorFindBar,
+  CopyButton
 } from '@/components'
 import { CodeEditor } from '@/components/editor'
 import { useSnapshotStore, useSecurityStore } from '@/stores'
@@ -165,7 +165,6 @@ const mobileTab = ref<'both' | 'input' | 'output'>('both')
 
 // Action States
 const isCopied = ref(false)
-const isInputCopied = ref(false)
 const isTokenMapCopied = ref(false)
 const copiedMatchId = ref<string | null>(null)
 const executionTimeMs = ref<number | null>(null)
@@ -206,13 +205,13 @@ const inputFindOpen = ref(false)
 const inputFindQuery = ref('')
 const inputFindCase = ref(false)
 const inputFindIndex = ref(0)
-const inputFindInputRef = ref<HTMLInputElement | null>(null)
+const inputFindBarRef = ref<{ focus: () => void } | null>(null)
 
 const outputFindOpen = ref(false)
 const outputFindQuery = ref('')
 const outputFindCase = ref(false)
 const outputFindIndex = ref(0)
-const outputFindInputRef = ref<HTMLInputElement | null>(null)
+const outputFindBarRef = ref<{ focus: () => void } | null>(null)
 
 const activeEditorPane = ref<'input' | 'output'>('input')
 
@@ -536,8 +535,7 @@ function toggleInputFind() {
   if (inputFindOpen.value) {
     outputFindOpen.value = false
     nextTick(() => {
-      inputFindInputRef.value?.focus()
-      inputFindInputRef.value?.select()
+      inputFindBarRef.value?.focus()
     })
   }
 }
@@ -547,8 +545,7 @@ function toggleOutputFind() {
   if (outputFindOpen.value) {
     inputFindOpen.value = false
     nextTick(() => {
-      outputFindInputRef.value?.focus()
-      outputFindInputRef.value?.select()
+      outputFindBarRef.value?.focus()
     })
   }
 }
@@ -771,19 +768,6 @@ async function copyOutput() {
   }
 }
 
-// Copy input raw text
-async function copyInput() {
-  if (!inputText.value) return
-  const success = await securityStore.copyToClipboard(inputText.value, {
-    label: 'Raw Input Log'
-  })
-  if (success) {
-    isInputCopied.value = true
-    setTimeout(() => {
-      isInputCopied.value = false
-    }, 2000)
-  }
-}
 
 // Upload file directly into input editor
 async function handleUploadInput() {
@@ -1377,17 +1361,12 @@ onBeforeUnmount(() => {
                 </M3Tooltip>
 
                 <!-- Copy Input -->
-                <M3Tooltip :text="isInputCopied ? 'Copied!' : 'Copy Input'" placement="top">
-                  <button
-                    type="button"
-                    class="pane-icon-btn"
-                    :class="{ active: isInputCopied }"
-                    aria-label="Copy Input"
-                    @click="copyInput"
-                  >
-                    <component :is="isInputCopied ? Check : Copy" :size="13" />
-                  </button>
-                </M3Tooltip>
+                <CopyButton
+                  :text="inputText"
+                  label="Copy Input"
+                  copied-label="Copied!"
+                  :icon-size="13"
+                />
 
                 <!-- Open / Upload File -->
                 <M3Tooltip text="Open Log / Text File" placement="top">
@@ -1416,60 +1395,18 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- In-Editor Find Bar for Input -->
-            <div v-if="inputFindOpen" class="column-find-bar">
-              <div class="find-input-wrap">
-                <Search :size="12" class="find-icon" />
-                <input
-                  ref="inputFindInputRef"
-                  v-model="inputFindQuery"
-                  type="text"
-                  class="find-input"
-                  placeholder="Find in Raw Input..."
-                  spellcheck="false"
-                  @keydown.enter.exact="navigateInputMatch('next')"
-                  @keydown.shift.enter="navigateInputMatch('prev')"
-                  @keydown.esc="inputFindOpen = false"
-                />
-                <span v-if="inputFindQuery" class="find-count">
-                  {{ inputMatchCount > 0 ? `${inputFindIndex || 1} of ${inputMatchCount}` : '0 results' }}
-                </span>
-              </div>
-              <button
-                type="button"
-                class="find-opt-btn"
-                :class="{ active: inputFindCase }"
-                title="Match Case"
-                @click="inputFindCase = !inputFindCase"
-              >
-                Aa
-              </button>
-              <button
-                type="button"
-                class="find-nav-btn"
-                title="Previous Match (Shift+Enter)"
-                :disabled="inputMatchCount === 0"
-                @click="navigateInputMatch('prev')"
-              >
-                <ChevronUp :size="13" />
-              </button>
-              <button
-                type="button"
-                class="find-nav-btn"
-                title="Next Match (Enter)"
-                :disabled="inputMatchCount === 0"
-                @click="navigateInputMatch('next')"
-              >
-                <ChevronDown :size="13" />
-              </button>
-              <button
-                type="button"
-                class="find-close-btn"
-                title="Close (Esc)"
-                @click="inputFindOpen = false"
-              >
-                ✕
-              </button>
-            </div>
+            <EditorFindBar
+              v-if="inputFindOpen"
+              ref="inputFindBarRef"
+              v-model="inputFindQuery"
+              v-model:case-sensitive="inputFindCase"
+              :match-count="inputMatchCount"
+              :match-index="inputFindIndex"
+              placeholder="Find in Raw Input..."
+              @next="navigateInputMatch('next')"
+              @prev="navigateInputMatch('prev')"
+              @close="inputFindOpen = false"
+            />
 
             <!-- Code Editor Component -->
             <div class="editor-inner-wrap">
@@ -1521,18 +1458,13 @@ onBeforeUnmount(() => {
                 </M3Tooltip>
 
                 <!-- Copy Output -->
-                <M3Tooltip :text="isCopied ? 'Copied!' : 'Copy Sanitized Log'" placement="top">
-                  <button
-                    type="button"
-                    class="pane-icon-btn"
-                    :class="{ active: isCopied }"
-                    :disabled="!outputText"
-                    aria-label="Copy Output"
-                    @click="copyOutput"
-                  >
-                    <component :is="isCopied ? Check : Copy" :size="13" />
-                  </button>
-                </M3Tooltip>
+                <CopyButton
+                  :text="outputText"
+                  label="Copy Sanitized Log"
+                  copied-label="Copied!"
+                  :icon-size="13"
+                  :disabled="!outputText"
+                />
 
                 <!-- Download .log -->
                 <M3Tooltip text="Download Sanitized Log" placement="top">
@@ -1550,60 +1482,18 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- In-Editor Find Bar for Output -->
-            <div v-if="outputFindOpen" class="column-find-bar">
-              <div class="find-input-wrap">
-                <Search :size="12" class="find-icon" />
-                <input
-                  ref="outputFindInputRef"
-                  v-model="outputFindQuery"
-                  type="text"
-                  class="find-input"
-                  placeholder="Find in Sanitized Output..."
-                  spellcheck="false"
-                  @keydown.enter.exact="navigateOutputMatch('next')"
-                  @keydown.shift.enter="navigateOutputMatch('prev')"
-                  @keydown.esc="outputFindOpen = false"
-                />
-                <span v-if="outputFindQuery" class="find-count">
-                  {{ outputMatchCount > 0 ? `${outputFindIndex || 1} of ${outputMatchCount}` : '0 results' }}
-                </span>
-              </div>
-              <button
-                type="button"
-                class="find-opt-btn"
-                :class="{ active: outputFindCase }"
-                title="Match Case"
-                @click="outputFindCase = !outputFindCase"
-              >
-                Aa
-              </button>
-              <button
-                type="button"
-                class="find-nav-btn"
-                title="Previous Match (Shift+Enter)"
-                :disabled="outputMatchCount === 0"
-                @click="navigateOutputMatch('prev')"
-              >
-                <ChevronUp :size="13" />
-              </button>
-              <button
-                type="button"
-                class="find-nav-btn"
-                title="Next Match (Enter)"
-                :disabled="outputMatchCount === 0"
-                @click="navigateOutputMatch('next')"
-              >
-                <ChevronDown :size="13" />
-              </button>
-              <button
-                type="button"
-                class="find-close-btn"
-                title="Close (Esc)"
-                @click="outputFindOpen = false"
-              >
-                ✕
-              </button>
-            </div>
+            <EditorFindBar
+              v-if="outputFindOpen"
+              ref="outputFindBarRef"
+              v-model="outputFindQuery"
+              v-model:case-sensitive="outputFindCase"
+              :match-count="outputMatchCount"
+              :match-index="outputFindIndex"
+              placeholder="Find in Sanitized Output..."
+              @next="navigateOutputMatch('next')"
+              @prev="navigateOutputMatch('prev')"
+              @close="outputFindOpen = false"
+            />
 
             <!-- Code Editor Component -->
             <div class="editor-inner-wrap">
@@ -2716,63 +2606,7 @@ onBeforeUnmount(() => {
   color: var(--md-sys-color-error);
 }
 
-/* In-Editor Find Bar */
-.column-find-bar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 6px;
-  background: var(--md-sys-color-surface-container-high);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-}
 
-.find-input-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  flex: 1;
-}
-
-.find-icon {
-  position: absolute;
-  left: 6px;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.find-input {
-  width: 100%;
-  background: var(--md-sys-color-surface);
-  border: 1px solid var(--md-sys-color-outline);
-  color: var(--md-sys-color-on-surface);
-  font-size: 0.72rem;
-  padding: 2px 50px 2px 22px;
-  border-radius: 4px;
-  outline: none;
-}
-
-.find-count {
-  position: absolute;
-  right: 6px;
-  font-size: 0.68rem;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.find-opt-btn,
-.find-nav-btn,
-.find-close-btn {
-  background: transparent;
-  border: none;
-  color: var(--md-sys-color-on-surface-variant);
-  padding: 2px 5px;
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 0.72rem;
-}
-
-.find-opt-btn.active {
-  background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
-}
 
 .editor-inner-wrap {
   flex: 1;

@@ -1,5 +1,7 @@
 export { default as CodeEditor } from './CodeEditor.vue'
 export { default as SplitPane } from './SplitPane.vue'
 export { default as SplitEditor } from './SplitEditor.vue'
+export { default as EditorFindBar } from './EditorFindBar.vue'
+export { default as PaneHeader } from './PaneHeader.vue'
 export * from './theme'
 export * from './languages'

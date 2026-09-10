@@ -3,8 +3,6 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import {
   Sparkles,
   RotateCcw,
-  Copy,
-  Check,
   Search,
   Download,
   Upload,
@@ -17,14 +15,14 @@ import {
   Clock,
   Code2,
   FileCode,
-  ChevronUp,
-  ChevronDown,
   Wrench
 } from 'lucide-vue-next'
 import {
   CodeEditor,
   M3Tooltip,
-  SplitPane
+  SplitPane,
+  EditorFindBar,
+  CopyButton
 } from '@/components'
 import { useSnapshotStore } from '@/stores'
 import { openNativeFileDialog, saveNativeFileDialog } from '@/core/native'
@@ -181,8 +179,6 @@ const autoGenerate = ref<boolean>(initialSaved.autoGenerate ?? true)
 const rootRef = ref<HTMLDivElement | null>(null)
 const isFullscreen = ref(false)
 const mobileTab = ref<'both' | 'input' | 'output'>('both')
-const isOutputCopied = ref(false)
-const isInputCopied = ref(false)
 
 const lastResult = ref<TypeGeneratorResult | null>(null)
 const genError = ref<string | null>(null)
@@ -198,13 +194,13 @@ const inputFindOpen = ref(false)
 const inputFindQuery = ref('')
 const inputFindCase = ref(false)
 const inputFindIndex = ref(0)
-const inputFindInputRef = ref<HTMLInputElement | null>(null)
+const inputFindBarRef = ref<{ focus: () => void } | null>(null)
 
 const outputFindOpen = ref(false)
 const outputFindQuery = ref('')
 const outputFindCase = ref(false)
 const outputFindIndex = ref(0)
-const outputFindInputRef = ref<HTMLInputElement | null>(null)
+const outputFindBarRef = ref<{ focus: () => void } | null>(null)
 
 const activeEditorPane = ref<'input' | 'output'>('input')
 
@@ -478,8 +474,7 @@ function toggleInputFind() {
   if (inputFindOpen.value) {
     activeEditorPane.value = 'input'
     nextTick(() => {
-      inputFindInputRef.value?.focus()
-      inputFindInputRef.value?.select()
+      inputFindBarRef.value?.focus()
     })
   }
 }
@@ -489,8 +484,7 @@ function toggleOutputFind() {
   if (outputFindOpen.value) {
     activeEditorPane.value = 'output'
     nextTick(() => {
-      outputFindInputRef.value?.focus()
-      outputFindInputRef.value?.select()
+      outputFindBarRef.value?.focus()
     })
   }
 }
@@ -604,24 +598,7 @@ function handleClear() {
   repairNotices.value = []
 }
 
-// Copy Handlers
-async function handleCopyInput() {
-  if (!inputJson.value) return
-  await navigator.clipboard.writeText(inputJson.value)
-  isInputCopied.value = true
-  setTimeout(() => {
-    isInputCopied.value = false
-  }, 1800)
-}
 
-async function handleCopyOutput() {
-  if (!outputCode.value) return
-  await navigator.clipboard.writeText(outputCode.value)
-  isOutputCopied.value = true
-  setTimeout(() => {
-    isOutputCopied.value = false
-  }, 1800)
-}
 
 // Native File Upload & Download
 async function handleUploadInput() {
@@ -1433,17 +1410,12 @@ onBeforeUnmount(() => {
                 </M3Tooltip>
 
                 <!-- Copy Input -->
-                <M3Tooltip :text="isInputCopied ? 'Copied!' : 'Copy Input'" placement="top">
-                  <button
-                    type="button"
-                    class="pane-icon-btn"
-                    :class="{ active: isInputCopied }"
-                    aria-label="Copy Input"
-                    @click="handleCopyInput"
-                  >
-                    <component :is="isInputCopied ? Check : Copy" :size="13" />
-                  </button>
-                </M3Tooltip>
+                <CopyButton
+                  :text="inputJson"
+                  label="Copy Input"
+                  copied-label="Copied!"
+                  :icon-size="13"
+                />
 
                 <!-- Open File -->
                 <M3Tooltip text="Open JSON File" placement="top">
@@ -1471,61 +1443,19 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- Custom Input Find Bar -->
-            <div v-if="inputFindOpen" class="column-find-bar">
-              <div class="find-input-wrap">
-                <Search :size="12" class="find-icon" />
-                <input
-                  ref="inputFindInputRef"
-                  v-model="inputFindQuery"
-                  type="text"
-                  class="find-input"
-                  placeholder="Find in Input JSON..."
-                  spellcheck="false"
-                  @keydown.enter.exact="navigateInputMatch('next')"
-                  @keydown.shift.enter="navigateInputMatch('prev')"
-                  @keydown.esc="inputFindOpen = false"
-                />
-                <span v-if="inputFindQuery" class="find-count">
-                  {{ inputMatchCount > 0 ? `${inputFindIndex} of ${inputMatchCount}` : '0 results' }}
-                </span>
-              </div>
-              <button
-                type="button"
-                class="find-opt-btn"
-                :class="{ active: inputFindCase }"
-                title="Match Case"
-                @click="inputFindCase = !inputFindCase"
-              >
-                Aa
-              </button>
-              <button
-                type="button"
-                class="find-nav-btn"
-                title="Previous Match (Shift+Enter)"
-                :disabled="inputMatchCount === 0"
-                @click="navigateInputMatch('prev')"
-              >
-                <ChevronUp :size="13" />
-              </button>
-              <button
-                type="button"
-                class="find-nav-btn"
-                title="Next Match (Enter)"
-                :disabled="inputMatchCount === 0"
-                @click="navigateInputMatch('next')"
-              >
-                <ChevronDown :size="13" />
-              </button>
-              <button
-                type="button"
-                class="find-close-btn"
-                title="Close (Esc)"
-                @click="inputFindOpen = false"
-              >
-                ✕
-              </button>
-            </div>
+            <!-- Standardized In-Editor Find Bar -->
+            <EditorFindBar
+              v-if="inputFindOpen"
+              ref="inputFindBarRef"
+              v-model="inputFindQuery"
+              v-model:case-sensitive="inputFindCase"
+              :match-count="inputMatchCount"
+              :match-index="inputFindIndex"
+              placeholder="Find in Input JSON..."
+              @next="navigateInputMatch('next')"
+              @prev="navigateInputMatch('prev')"
+              @close="inputFindOpen = false"
+            />
 
             <!-- CodeEditor Host -->
             <div class="editor-host-wrapper">
@@ -1574,18 +1504,13 @@ onBeforeUnmount(() => {
                 </M3Tooltip>
 
                 <!-- Copy Output -->
-                <M3Tooltip :text="isOutputCopied ? 'Copied Code!' : 'Copy Code'" placement="top">
-                  <button
-                    type="button"
-                    class="pane-icon-btn copy-primary-btn"
-                    :class="{ active: isOutputCopied }"
-                    :disabled="!outputCode"
-                    aria-label="Copy Code"
-                    @click="handleCopyOutput"
-                  >
-                    <component :is="isOutputCopied ? Check : Copy" :size="13" />
-                  </button>
-                </M3Tooltip>
+                <CopyButton
+                  :text="outputCode"
+                  label="Copy Code"
+                  copied-label="Copied Code!"
+                  :icon-size="13"
+                  :disabled="!outputCode"
+                />
 
                 <!-- Download Output -->
                 <M3Tooltip text="Download Code File" placement="top">
@@ -1602,61 +1527,19 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <!-- Custom Output Find Bar -->
-            <div v-if="outputFindOpen" class="column-find-bar">
-              <div class="find-input-wrap">
-                <Search :size="12" class="find-icon" />
-                <input
-                  ref="outputFindInputRef"
-                  v-model="outputFindQuery"
-                  type="text"
-                  class="find-input"
-                  placeholder="Find in Output Code..."
-                  spellcheck="false"
-                  @keydown.enter.exact="navigateOutputMatch('next')"
-                  @keydown.shift.enter="navigateOutputMatch('prev')"
-                  @keydown.esc="outputFindOpen = false"
-                />
-                <span v-if="outputFindQuery" class="find-count">
-                  {{ outputMatchCount > 0 ? `${outputFindIndex} of ${outputMatchCount}` : '0 results' }}
-                </span>
-              </div>
-              <button
-                type="button"
-                class="find-opt-btn"
-                :class="{ active: outputFindCase }"
-                title="Match Case"
-                @click="outputFindCase = !outputFindCase"
-              >
-                Aa
-              </button>
-              <button
-                type="button"
-                class="find-nav-btn"
-                title="Previous Match (Shift+Enter)"
-                :disabled="outputMatchCount === 0"
-                @click="navigateOutputMatch('prev')"
-              >
-                <ChevronUp :size="13" />
-              </button>
-              <button
-                type="button"
-                class="find-nav-btn"
-                title="Next Match (Enter)"
-                :disabled="outputMatchCount === 0"
-                @click="navigateOutputMatch('next')"
-              >
-                <ChevronDown :size="13" />
-              </button>
-              <button
-                type="button"
-                class="find-close-btn"
-                title="Close (Esc)"
-                @click="outputFindOpen = false"
-              >
-                ✕
-              </button>
-            </div>
+            <!-- Standardized In-Editor Find Bar -->
+            <EditorFindBar
+              v-if="outputFindOpen"
+              ref="outputFindBarRef"
+              v-model="outputFindQuery"
+              v-model:case-sensitive="outputFindCase"
+              :match-count="outputMatchCount"
+              :match-index="outputFindIndex"
+              placeholder="Find in Output Code..."
+              @next="navigateOutputMatch('next')"
+              @prev="navigateOutputMatch('prev')"
+              @close="outputFindOpen = false"
+            />
 
             <!-- CodeEditor Host -->
             <div class="editor-host-wrapper">
@@ -2292,83 +2175,7 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-/* In-Editor Find Bar */
-.column-find-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  background-color: var(--md-sys-color-surface-container-high);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  flex-shrink: 0;
-}
 
-.find-input-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  flex: 1;
-  background-color: var(--md-sys-color-surface-container);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 4px;
-  padding: 0 0.35rem;
-  height: 24px;
-}
-
-.find-icon {
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.find-input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  color: var(--md-sys-color-on-surface);
-  font-size: 0.6875rem;
-  outline: none;
-}
-
-.find-count {
-  font-size: 0.625rem;
-  color: var(--md-sys-color-on-surface-variant);
-  font-family: var(--md-sys-typescale-code-font, monospace);
-  white-space: nowrap;
-}
-
-.find-opt-btn,
-.find-nav-btn,
-.find-close-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 4px;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background-color: var(--md-sys-color-surface-container);
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 0.6875rem;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.find-opt-btn:hover,
-.find-nav-btn:hover:not(:disabled),
-.find-close-btn:hover {
-  background-color: var(--md-sys-color-surface-container-highest);
-  color: var(--md-sys-color-on-surface);
-}
-
-.find-opt-btn.active {
-  background-color: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
-  border-color: var(--md-sys-color-primary);
-}
-
-.find-nav-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
 
 .editor-host-wrapper {
   flex: 1;

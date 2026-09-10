@@ -31,7 +31,9 @@ import {
   M3Checkbox,
   M3Badge,
   M3Switch,
-  CodeEditor
+  CodeEditor,
+  PaneHeader,
+  CopyButton
 } from '@/components'
 import { useSnapshotStore } from '@/stores'
 import {
@@ -1045,21 +1047,18 @@ onUnmounted(() => {
           <div v-if="activeRightTab === 'editor'" class="json-editors-pane">
             <!-- Header Editor -->
             <div class="editor-section-box header-editor-box">
-              <div class="editor-header-bar">
-                <div class="bar-title">
-                  <span class="dot-indicator header-dot"></span>
-                  <span>Header: Algorithm & Token Type</span>
-                </div>
-                <button
-                  type="button"
-                  class="mini-copy-btn"
-                  @click="copyText(headerJsonText, 'header_json')"
-                >
-                  <Check v-if="copyStatus['header_json']" :size="12" class="text-success" />
-                  <Copy v-else :size="12" />
-                  <span>{{ copyStatus['header_json'] ? 'Copied' : 'Copy' }}</span>
-                </button>
-              </div>
+              <PaneHeader
+                title="Header: Algorithm & Token Type"
+                indicator-color="#f43f5e"
+              >
+                <template #actions>
+                  <CopyButton
+                    :text="headerJsonText"
+                    size="compact"
+                    tooltip="Copy Header JSON"
+                  />
+                </template>
+              </PaneHeader>
               <div class="editor-container header-cm">
                 <CodeEditor
                   v-model="headerJsonText"
@@ -1078,21 +1077,18 @@ onUnmounted(() => {
 
             <!-- Payload Editor -->
             <div class="editor-section-box payload-editor-box">
-              <div class="editor-header-bar">
-                <div class="bar-title">
-                  <span class="dot-indicator payload-dot"></span>
-                  <span>Payload: Data & Claims</span>
-                </div>
-                <button
-                  type="button"
-                  class="mini-copy-btn"
-                  @click="copyText(payloadJsonText, 'payload_json')"
-                >
-                  <Check v-if="copyStatus['payload_json']" :size="12" class="text-success" />
-                  <Copy v-else :size="12" />
-                  <span>{{ copyStatus['payload_json'] ? 'Copied' : 'Copy' }}</span>
-                </button>
-              </div>
+              <PaneHeader
+                title="Payload: Data & Claims"
+                indicator-color="#8b5cf6"
+              >
+                <template #actions>
+                  <CopyButton
+                    :text="payloadJsonText"
+                    size="compact"
+                    tooltip="Copy Payload JSON"
+                  />
+                </template>
+              </PaneHeader>
               <div class="editor-container payload-cm">
                 <CodeEditor
                   v-model="payloadJsonText"

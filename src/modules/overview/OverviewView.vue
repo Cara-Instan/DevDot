@@ -2,19 +2,18 @@
 import { ref, computed } from 'vue'
 import {
   ShieldCheck,
-  Search,
   ArrowRight,
   Star,
   GripVertical,
   RotateCcw,
   LayoutGrid,
   List,
-  X,
   AlertTriangle
 } from 'lucide-vue-next'
 import {
   M3Button,
-  ToolIcon
+  ToolIcon,
+  SearchInput
 } from '@/components'
 import {
   useNavigationStore,
@@ -261,24 +260,12 @@ function resetDragState() {
       <!-- Catalog Controls Bar -->
       <div class="catalog-filter-bar">
         <div class="filter-left">
-          <div class="catalog-search-wrapper">
-            <Search :size="15" class="search-icon" />
-            <input
-              v-model="overviewSearch"
-              type="text"
-              class="catalog-search-field"
-              placeholder="Filter tools by name, tag, or keyword..."
-            />
-            <button
-              v-if="overviewSearch"
-              type="button"
-              class="clear-filter-btn"
-              title="Clear search"
-              @click="overviewSearch = ''"
-            >
-              <X :size="14" />
-            </button>
-          </div>
+          <SearchInput
+            v-model="overviewSearch"
+            size="normal"
+            placeholder="Filter tools by name, tag, or keyword..."
+            class="catalog-search-box"
+          />
 
           <!-- Category Filter Pills -->
           <div class="category-pills">
@@ -703,38 +690,8 @@ function resetDragState() {
   gap: 0.5rem;
 }
 
-.catalog-search-wrapper {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0.75rem;
-  background-color: var(--md-sys-color-surface-container-low);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 9999px;
+.catalog-search-box {
   min-width: 260px;
-}
-
-.search-icon {
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.catalog-search-field {
-  border: none;
-  background: transparent;
-  font-size: 0.8125rem;
-  color: var(--md-sys-color-on-surface);
-  outline: none;
-  width: 100%;
-}
-
-.clear-filter-btn {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  color: var(--md-sys-color-on-surface-variant);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .category-pills {

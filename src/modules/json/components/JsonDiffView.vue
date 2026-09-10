@@ -25,7 +25,11 @@ import {
 } from 'lucide-vue-next'
 import {
   CodeEditor,
-  M3Tooltip
+  M3Tooltip,
+  EditorFindBar,
+  SearchInput,
+  FilterChips,
+  type FilterChipOption
 } from '@/components'
 import { useExecutionEngine } from '@/composables'
 import { useSnapshotStore } from '@/stores'
@@ -116,19 +120,19 @@ const leftFindOpen = ref(false)
 const leftFindQuery = ref('')
 const leftFindCase = ref(false)
 const leftFindIndex = ref(0)
-const leftFindInputRef = ref<HTMLInputElement | null>(null)
+const leftFindBarRef = ref<{ focus: () => void } | null>(null)
 
 const rightFindOpen = ref(false)
 const rightFindQuery = ref('')
 const rightFindCase = ref(false)
 const rightFindIndex = ref(0)
-const rightFindInputRef = ref<HTMLInputElement | null>(null)
+const rightFindBarRef = ref<{ focus: () => void } | null>(null)
 
 const unifiedFindOpen = ref(false)
 const unifiedFindQuery = ref('')
 const unifiedFindCase = ref(false)
 const unifiedFindIndex = ref(0)
-const unifiedFindInputRef = ref<HTMLInputElement | null>(null)
+const unifiedFindBarRef = ref<{ focus: () => void } | null>(null)
 
 // Sync changes to snapshot store
 let diffSyncTimer: any = null
@@ -297,14 +301,12 @@ function handleKeyDown(e: KeyboardEvent) {
           leftFindOpen.value = true
           rightFindOpen.value = true
           nextTick(() => {
-            leftFindInputRef.value?.focus()
-            leftFindInputRef.value?.select()
+            leftFindBarRef.value?.focus()
           })
         } else {
           leftFindOpen.value = true
           nextTick(() => {
-            leftFindInputRef.value?.focus()
-            leftFindInputRef.value?.select()
+            leftFindBarRef.value?.focus()
           })
         }
       }
@@ -550,8 +552,7 @@ function toggleLeftFind() {
   leftFindOpen.value = !leftFindOpen.value
   if (leftFindOpen.value) {
     nextTick(() => {
-      leftFindInputRef.value?.focus()
-      leftFindInputRef.value?.select()
+      leftFindBarRef.value?.focus()
     })
   }
 }
@@ -560,8 +561,7 @@ function toggleRightFind() {
   rightFindOpen.value = !rightFindOpen.value
   if (rightFindOpen.value) {
     nextTick(() => {
-      rightFindInputRef.value?.focus()
-      rightFindInputRef.value?.select()
+      rightFindBarRef.value?.focus()
     })
   }
 }
@@ -570,8 +570,7 @@ function toggleUnifiedFind() {
   unifiedFindOpen.value = !unifiedFindOpen.value
   if (unifiedFindOpen.value) {
     nextTick(() => {
-      unifiedFindInputRef.value?.focus()
-      unifiedFindInputRef.value?.select()
+      unifiedFindBarRef.value?.focus()
     })
   }
 }
@@ -655,6 +654,25 @@ const structuralCounts = computed(() => {
     modified: diffs.filter((d) => d.type === 'modified').length,
     type_changed: diffs.filter((d) => d.type === 'type_changed').length
   }
+})
+
+const diffFilterChips = computed<FilterChipOption[]>(() => {
+  const chips: FilterChipOption[] = [
+    { id: 'all', label: 'All', count: structuralCounts.value.all }
+  ]
+  if (structuralCounts.value.added > 0) {
+    chips.push({ id: 'added', label: 'Added', prefix: '+', count: structuralCounts.value.added, color: 'var(--color-diff-add-text, #4ade80)' })
+  }
+  if (structuralCounts.value.removed > 0) {
+    chips.push({ id: 'removed', label: 'Removed', prefix: '-', count: structuralCounts.value.removed, color: 'var(--color-diff-remove-text, #f87171)' })
+  }
+  if (structuralCounts.value.modified > 0) {
+    chips.push({ id: 'modified', label: 'Modified', prefix: '~', count: structuralCounts.value.modified, color: 'var(--color-diff-modify-text, #fbbf24)' })
+  }
+  if (structuralCounts.value.type_changed > 0) {
+    chips.push({ id: 'type_changed', label: 'Type Changed', prefix: '!', count: structuralCounts.value.type_changed, color: 'var(--color-diff-type-text, #c084fc)' })
+  }
+  return chips
 })
 
 const filteredStructuralDiff = computed(() => {
@@ -1186,60 +1204,18 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- Left In-Editor Find Bar -->
-            <div v-if="leftFindOpen" class="column-find-bar">
-              <div class="find-input-wrap">
-                <Search :size="12" class="find-icon" />
-                <input
-                  ref="leftFindInputRef"
-                  v-model="leftFindQuery"
-                  type="text"
-                  class="find-input"
-                  placeholder="Find in Base..."
-                  spellcheck="false"
-                  @keydown.enter.exact="navigateLeftMatch('next')"
-                  @keydown.shift.enter="navigateLeftMatch('prev')"
-                  @keydown.esc="leftFindOpen = false"
-                />
-                <span v-if="leftFindQuery" class="find-count">
-                  {{ leftMatchCount > 0 ? `${leftFindIndex} of ${leftMatchCount}` : '0 results' }}
-                </span>
-              </div>
-              <button
-                type="button"
-                class="find-opt-btn"
-                :class="{ active: leftFindCase }"
-                title="Match Case"
-                @click="leftFindCase = !leftFindCase"
-              >
-                Aa
-              </button>
-              <button
-                type="button"
-                class="find-nav-btn"
-                title="Previous Match (Shift+Enter)"
-                :disabled="leftMatchCount === 0"
-                @click="navigateLeftMatch('prev')"
-              >
-                <ChevronUp :size="13" />
-              </button>
-              <button
-                type="button"
-                class="find-nav-btn"
-                title="Next Match (Enter)"
-                :disabled="leftMatchCount === 0"
-                @click="navigateLeftMatch('next')"
-              >
-                <ChevronDown :size="13" />
-              </button>
-              <button
-                type="button"
-                class="find-close-btn"
-                title="Close (Esc)"
-                @click="leftFindOpen = false"
-              >
-                ✕
-              </button>
-            </div>
+            <EditorFindBar
+              v-if="leftFindOpen"
+              ref="leftFindBarRef"
+              v-model="leftFindQuery"
+              v-model:case-sensitive="leftFindCase"
+              :match-count="leftMatchCount"
+              :match-index="leftFindIndex"
+              placeholder="Find in Base..."
+              @next="navigateLeftMatch('next')"
+              @prev="navigateLeftMatch('prev')"
+              @close="leftFindOpen = false"
+            />
 
             <div
               ref="leftScrollRef"
@@ -1324,60 +1300,18 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- Right In-Editor Find Bar -->
-            <div v-if="rightFindOpen" class="column-find-bar">
-              <div class="find-input-wrap">
-                <Search :size="12" class="find-icon" />
-                <input
-                  ref="rightFindInputRef"
-                  v-model="rightFindQuery"
-                  type="text"
-                  class="find-input"
-                  placeholder="Find in Modified..."
-                  spellcheck="false"
-                  @keydown.enter.exact="navigateRightMatch('next')"
-                  @keydown.shift.enter="navigateRightMatch('prev')"
-                  @keydown.esc="rightFindOpen = false"
-                />
-                <span v-if="rightFindQuery" class="find-count">
-                  {{ rightMatchCount > 0 ? `${rightFindIndex} of ${rightMatchCount}` : '0 results' }}
-                </span>
-              </div>
-              <button
-                type="button"
-                class="find-opt-btn"
-                :class="{ active: rightFindCase }"
-                title="Match Case"
-                @click="rightFindCase = !rightFindCase"
-              >
-                Aa
-              </button>
-              <button
-                type="button"
-                class="find-nav-btn"
-                title="Previous Match (Shift+Enter)"
-                :disabled="rightMatchCount === 0"
-                @click="navigateRightMatch('prev')"
-              >
-                <ChevronUp :size="13" />
-              </button>
-              <button
-                type="button"
-                class="find-nav-btn"
-                title="Next Match (Enter)"
-                :disabled="rightMatchCount === 0"
-                @click="navigateRightMatch('next')"
-              >
-                <ChevronDown :size="13" />
-              </button>
-              <button
-                type="button"
-                class="find-close-btn"
-                title="Close (Esc)"
-                @click="rightFindOpen = false"
-              >
-                ✕
-              </button>
-            </div>
+            <EditorFindBar
+              v-if="rightFindOpen"
+              ref="rightFindBarRef"
+              v-model="rightFindQuery"
+              v-model:case-sensitive="rightFindCase"
+              :match-count="rightMatchCount"
+              :match-index="rightFindIndex"
+              placeholder="Find in Modified..."
+              @next="navigateRightMatch('next')"
+              @prev="navigateRightMatch('prev')"
+              @close="rightFindOpen = false"
+            />
 
             <div
               ref="rightScrollRef"
@@ -1472,60 +1406,18 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- Unified In-Editor Find Bar -->
-          <div v-if="unifiedFindOpen" class="column-find-bar">
-            <div class="find-input-wrap">
-              <Search :size="12" class="find-icon" />
-              <input
-                ref="unifiedFindInputRef"
-                v-model="unifiedFindQuery"
-                type="text"
-                class="find-input"
-                placeholder="Find in Unified Stream..."
-                spellcheck="false"
-                @keydown.enter.exact="navigateUnifiedMatch('next')"
-                @keydown.shift.enter="navigateUnifiedMatch('prev')"
-                @keydown.esc="unifiedFindOpen = false"
-              />
-              <span v-if="unifiedFindQuery" class="find-count">
-                {{ unifiedMatchCount > 0 ? `${unifiedFindIndex} of ${unifiedMatchCount}` : '0 results' }}
-              </span>
-            </div>
-            <button
-              type="button"
-              class="find-opt-btn"
-              :class="{ active: unifiedFindCase }"
-              title="Match Case"
-              @click="unifiedFindCase = !unifiedFindCase"
-            >
-              Aa
-            </button>
-            <button
-              type="button"
-              class="find-nav-btn"
-              title="Previous Match (Shift+Enter)"
-              :disabled="unifiedMatchCount === 0"
-              @click="navigateUnifiedMatch('prev')"
-            >
-              <ChevronUp :size="13" />
-            </button>
-            <button
-              type="button"
-              class="find-nav-btn"
-              title="Next Match (Enter)"
-              :disabled="unifiedMatchCount === 0"
-              @click="navigateUnifiedMatch('next')"
-            >
-              <ChevronDown :size="13" />
-            </button>
-            <button
-              type="button"
-              class="find-close-btn"
-              title="Close (Esc)"
-              @click="unifiedFindOpen = false"
-            >
-              ✕
-            </button>
-          </div>
+          <EditorFindBar
+            v-if="unifiedFindOpen"
+            ref="unifiedFindBarRef"
+            v-model="unifiedFindQuery"
+            v-model:case-sensitive="unifiedFindCase"
+            :match-count="unifiedMatchCount"
+            :match-index="unifiedFindIndex"
+            placeholder="Find in Unified Stream..."
+            @next="navigateUnifiedMatch('next')"
+            @prev="navigateUnifiedMatch('prev')"
+            @close="unifiedFindOpen = false"
+          />
 
           <div class="unified-scroll-area">
             <div
@@ -1611,75 +1503,21 @@ onBeforeUnmount(() => {
             </div>
 
             <!-- Filter Type Chips -->
-            <div class="filter-chips">
-              <button
-                type="button"
-                class="filter-chip"
-                :class="{ active: filterType === 'all' }"
-                @click="filterType = 'all'"
-              >
-                All ({{ structuralCounts.all }})
-              </button>
-              <button
-                v-if="structuralCounts.added > 0"
-                type="button"
-                class="filter-chip chip-added"
-                :class="{ active: filterType === 'added' }"
-                @click="filterType = 'added'"
-              >
-                +{{ structuralCounts.added }}
-              </button>
-              <button
-                v-if="structuralCounts.removed > 0"
-                type="button"
-                class="filter-chip chip-removed"
-                :class="{ active: filterType === 'removed' }"
-                @click="filterType = 'removed'"
-              >
-                -{{ structuralCounts.removed }}
-              </button>
-              <button
-                v-if="structuralCounts.modified > 0"
-                type="button"
-                class="filter-chip chip-modified"
-                :class="{ active: filterType === 'modified' }"
-                @click="filterType = 'modified'"
-              >
-                ~{{ structuralCounts.modified }}
-              </button>
-              <button
-                v-if="structuralCounts.type_changed > 0"
-                type="button"
-                class="filter-chip chip-type-changed"
-                :class="{ active: filterType === 'type_changed' }"
-                @click="filterType = 'type_changed'"
-              >
-                !{{ structuralCounts.type_changed }}
-              </button>
-            </div>
+            <FilterChips
+              v-model="filterType"
+              :chips="diffFilterChips"
+              size="compact"
+            />
           </div>
 
           <div class="header-right">
             <!-- Search input -->
-            <div class="search-box">
-              <Search :size="12" class="search-icon" />
-              <input
-                v-model="filterQuery"
-                type="text"
-                class="search-input"
-                placeholder="Filter path / changes..."
-                spellcheck="false"
-              />
-              <button
-                v-if="filterQuery"
-                type="button"
-                class="clear-search-btn"
-                aria-label="Clear filter"
-                @click="filterQuery = ''"
-              >
-                ✕
-              </button>
-            </div>
+            <SearchInput
+              v-model="filterQuery"
+              placeholder="Filter path / changes..."
+              size="compact"
+              style="width: 170px;"
+            />
 
             <!-- Export Buttons -->
             <M3Tooltip text="Copy as Markdown Table" placement="top">
@@ -2339,136 +2177,7 @@ onBeforeUnmount(() => {
 }
 
 /* In-Editor Find Bar */
-.column-find-bar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: var(--md-sys-color-surface-container);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
-  flex-shrink: 0;
-  animation: slide-down 0.15s ease-out;
-}
 
-@keyframes slide-down {
-  from {
-    opacity: 0;
-    transform: translateY(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.find-input-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  flex: 1;
-  background: var(--md-sys-color-surface-container-high);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 6px;
-  padding: 0 6px;
-  min-width: 0;
-}
-
-.find-icon {
-  color: var(--md-sys-color-on-surface-variant);
-  flex-shrink: 0;
-  margin-right: 4px;
-}
-
-.find-input {
-  flex: 1;
-  border: none;
-  background: transparent;
-  color: var(--md-sys-color-on-surface);
-  font-size: 11.5px;
-  font-family: inherit;
-  padding: 3px 0;
-  outline: none;
-  min-width: 60px;
-}
-
-.find-count {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: var(--md-sys-color-on-surface-variant);
-  margin-left: 6px;
-  white-space: nowrap;
-}
-
-.find-opt-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 5px;
-  height: 24px;
-  min-width: 24px;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.find-opt-btn:hover {
-  background: var(--md-sys-color-surface-container-high);
-  color: var(--md-sys-color-on-surface);
-}
-
-.find-opt-btn.active {
-  background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
-  border-color: var(--md-sys-color-primary);
-}
-
-.find-nav-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: var(--md-sys-color-surface-container-high);
-  color: var(--md-sys-color-on-surface);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.12s ease;
-}
-
-.find-nav-btn:hover:not(:disabled) {
-  background: var(--md-sys-color-surface-container-highest);
-}
-
-.find-nav-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.find-close-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 11px;
-  transition: all 0.12s ease;
-}
-
-.find-close-btn:hover {
-  background: var(--md-sys-color-surface-container-highest);
-  color: var(--md-sys-color-error);
-}
 
 /* Search match highlighting */
 .find-match {
@@ -2893,70 +2602,8 @@ onBeforeUnmount(() => {
   color: var(--md-sys-color-error);
 }
 
-.search-box {
-  position: relative;
-  display: flex;
-  align-items: center;
-  background: var(--md-sys-color-surface-container-lowest);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 4px;
-  padding: 0 5px;
-  width: 140px;
-}
 
-.search-icon {
-  color: var(--md-sys-color-on-surface-variant);
-  flex-shrink: 0;
-}
 
-.search-input {
-  width: 100%;
-  border: none;
-  background: transparent;
-  font-size: 11px;
-  padding: 3px 4px;
-  color: var(--md-sys-color-on-surface);
-  outline: none;
-}
-
-.clear-search-btn {
-  border: none;
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
-  cursor: pointer;
-  padding: 0 2px;
-  font-size: 10px;
-}
-
-.filter-chips {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.filter-chip {
-  border: 1px solid var(--md-sys-color-outline-variant);
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 10.5px;
-  font-weight: 500;
-  padding: 2px 7px;
-  border-radius: 12px;
-  cursor: pointer;
-  transition: all 0.12s ease;
-  white-space: nowrap;
-}
-
-.filter-chip:hover {
-  background: var(--md-sys-color-surface-container-high);
-}
-
-.filter-chip.active {
-  background: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-on-primary-container);
-  border-color: var(--md-sys-color-primary);
-  font-weight: 600;
-}
 
 .subbar-btn {
   display: inline-flex;
