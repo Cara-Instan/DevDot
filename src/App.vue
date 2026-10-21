@@ -8,7 +8,8 @@ import {
 import {
   AppLayout,
   M3Button,
-  M3Dialog
+  M3Dialog,
+  ErrorBoundary
 } from '@/components'
 import {
   OverviewView,
@@ -56,13 +57,15 @@ const activeComponentKey = computed(() => {
     <!-- Main View Content -->
     <div class="app-main-container">
       <div class="tool-view-body">
-        <KeepAlive :max="15">
-          <component
-            :is="activeToolComponent"
-            :key="activeComponentKey"
-            :tab-id="activeComponentKey"
-          />
-        </KeepAlive>
+        <ErrorBoundary :tab-id="activeComponentKey" :tool-id="tabStore.activeToolId">
+          <KeepAlive :max="15">
+            <component
+              :is="activeToolComponent"
+              :key="activeComponentKey"
+              :tab-id="activeComponentKey"
+            />
+          </KeepAlive>
+        </ErrorBoundary>
       </div>
     </div>
 

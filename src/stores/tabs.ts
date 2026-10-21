@@ -39,10 +39,27 @@ function loadPersistedTabs(): WorkspaceTab[] {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Validate each tab has valid toolId
-        const validTabs: WorkspaceTab[] = parsed.filter(
-          (t) => t && typeof t.id === 'string' && typeof t.toolId === 'string'
-        )
+        // Validate each tab has valid toolId from ALL_TOOLS
+        const validTabs: WorkspaceTab[] = parsed
+          .filter(
+            (t) =>
+              t &&
+              typeof t === 'object' &&
+              typeof t.id === 'string' &&
+              t.id.trim() &&
+              typeof t.toolId === 'string' &&
+              ALL_TOOLS.some((tool) => tool.id === t.toolId)
+          )
+          .map((t) => ({
+            id: t.id,
+            toolId: t.toolId,
+            title: typeof t.title === 'string' && t.title.trim() ? t.title : (ALL_TOOLS.find((tool) => tool.id === t.toolId)?.name || t.toolId),
+            customTitle: typeof t.customTitle === 'string' ? t.customTitle : undefined,
+            isPinned: Boolean(t.isPinned),
+            createdAt: typeof t.createdAt === 'number' && !isNaN(t.createdAt) ? t.createdAt : Date.now(),
+            lastActiveAt: typeof t.lastActiveAt === 'number' && !isNaN(t.lastActiveAt) ? t.lastActiveAt : Date.now()
+          }))
+
         if (validTabs.length > 0) {
           // Deduplicate system-overview: keep at most one and ensure it is pinned
           let overviewTab: WorkspaceTab | null = null

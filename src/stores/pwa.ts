@@ -19,6 +19,7 @@ export const usePwaStore = defineStore('pwa', () => {
   const isDismissed = ref(false)
   const isOffline = ref(false)
   const needRefresh = ref(false)
+  const isUpdating = ref(false)
   const updateSWFunction = ref<((reloadPage?: boolean) => Promise<void>) | null>(null)
 
   // Initialize listeners
@@ -83,15 +84,52 @@ export const usePwaStore = defineStore('pwa', () => {
     }
   }
 
+  function dismissUpdate() {
+    needRefresh.value = false
+  }
+
   function registerUpdateHandler(updateFn: (reloadPage?: boolean) => Promise<void>) {
     updateSWFunction.value = updateFn
     needRefresh.value = true
   }
 
   async function updateApp() {
-    if (updateSWFunction.value) {
-      await updateSWFunction.value(true)
-    } else if (typeof window !== 'undefined') {
+    isUpdating.value = true
+    try {
+      if (updateSWFunction.value) {
+        await updateSWFunction.value(true)
+      } else if (typeof window !== 'undefined') {
+        await hardResetAppCaches()
+      }
+    } finally {
+      isUpdating.value = false
+    }
+  }
+
+  /**
+   * Complete emergency wipe of service worker registrations & CacheStorage caches,
+   * followed by an unconditional fresh page reload.
+   */
+  async function hardResetAppCaches(): Promise<void> {
+    if (typeof window === 'undefined') return
+
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations()
+        for (const reg of registrations) {
+          await reg.unregister()
+        }
+      }
+
+      if ('caches' in window) {
+        const cacheKeys = await window.caches.keys()
+        for (const key of cacheKeys) {
+          await window.caches.delete(key)
+        }
+      }
+    } catch (err) {
+      console.warn('[PwaStore] Error during hard cache reset:', err)
+    } finally {
       window.location.reload()
     }
   }
@@ -110,11 +148,14 @@ export const usePwaStore = defineStore('pwa', () => {
     isDismissed,
     isOffline,
     needRefresh,
+    isUpdating,
     showInstallBanner,
     initPwa,
     promptInstall,
     dismissInstall,
+    dismissUpdate,
     registerUpdateHandler,
-    updateApp
+    updateApp,
+    hardResetAppCaches
   }
 })

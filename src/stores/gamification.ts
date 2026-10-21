@@ -62,11 +62,53 @@ function loadFromStorage(): PersistedGamificationState {
     const raw = localStorage.getItem(GAMIFICATION_STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      return {
-        unlockedAchievements: parsed.unlockedAchievements || {},
-        progress: parsed.progress || {},
-        stats: { ...DEFAULT_STATS, ...parsed.stats },
-        pet: { ...DEFAULT_PET, ...parsed.pet }
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        // Sanitize Pet State
+        const rawPet = (parsed.pet && typeof parsed.pet === 'object' && !Array.isArray(parsed.pet)) ? parsed.pet : {}
+        const level = typeof rawPet.level === 'number' && !isNaN(rawPet.level) && rawPet.level >= 1 ? Math.floor(rawPet.level) : DEFAULT_PET.level
+        const xp = typeof rawPet.xp === 'number' && !isNaN(rawPet.xp) && rawPet.xp >= 0 ? Math.floor(rawPet.xp) : DEFAULT_PET.xp
+        const xpToNextLevel = typeof rawPet.xpToNextLevel === 'number' && !isNaN(rawPet.xpToNextLevel) && rawPet.xpToNextLevel >= 50 ? Math.floor(rawPet.xpToNextLevel) : DEFAULT_PET.xpToNextLevel
+
+        const petSanitized: Omit<PetState, 'mood'> = {
+          name: typeof rawPet.name === 'string' && rawPet.name.trim() ? rawPet.name.slice(0, 32) : DEFAULT_PET.name,
+          level,
+          xp,
+          xpToNextLevel,
+          skin: typeof rawPet.skin === 'string' ? rawPet.skin : DEFAULT_PET.skin,
+          enabled: typeof rawPet.enabled === 'boolean' ? rawPet.enabled : DEFAULT_PET.enabled,
+          isDocked: typeof rawPet.isDocked === 'boolean' ? rawPet.isDocked : DEFAULT_PET.isDocked,
+          soundEnabled: typeof rawPet.soundEnabled === 'boolean' ? rawPet.soundEnabled : DEFAULT_PET.soundEnabled,
+          soundVolume: typeof rawPet.soundVolume === 'number' && !isNaN(rawPet.soundVolume) ? Math.min(1, Math.max(0, rawPet.soundVolume)) : DEFAULT_PET.soundVolume,
+          totalFedBytes: typeof rawPet.totalFedBytes === 'number' && !isNaN(rawPet.totalFedBytes) ? Math.max(0, rawPet.totalFedBytes) : DEFAULT_PET.totalFedBytes
+        }
+
+        // Sanitize Stats State
+        const rawStats = (parsed.stats && typeof parsed.stats === 'object' && !Array.isArray(parsed.stats)) ? parsed.stats : {}
+        const statsSanitized: GamificationStats = { ...DEFAULT_STATS }
+        for (const [key, defaultVal] of Object.entries(DEFAULT_STATS)) {
+          if (typeof defaultVal === 'number') {
+            const val = rawStats[key]
+            statsSanitized[key as keyof GamificationStats] = (typeof val === 'number' && !isNaN(val) && val >= 0) ? Math.floor(val) : 0 as any
+          } else if (typeof defaultVal === 'object' && defaultVal !== null) {
+            const val = rawStats[key]
+            statsSanitized[key as keyof GamificationStats] = (val && typeof val === 'object' && !Array.isArray(val)) ? { ...val } : {} as any
+          }
+        }
+
+        // Sanitize Achievements & Progress
+        const unlockedAchievements = (parsed.unlockedAchievements && typeof parsed.unlockedAchievements === 'object' && !Array.isArray(parsed.unlockedAchievements))
+          ? parsed.unlockedAchievements
+          : {}
+        const progress = (parsed.progress && typeof parsed.progress === 'object' && !Array.isArray(parsed.progress))
+          ? parsed.progress
+          : {}
+
+        return {
+          unlockedAchievements,
+          progress,
+          stats: statsSanitized,
+          pet: petSanitized
+        }
       }
     }
   } catch (e) {
@@ -191,11 +233,33 @@ export const useGamificationStore = defineStore('gamification', () => {
   }
 
   function awardPetXp(amount: number) {
+    if (typeof amount !== 'number' || isNaN(amount) || amount <= 0) return
+
+    // Ensure state integrity before calculating
+    if (typeof pet.value.xp !== 'number' || isNaN(pet.value.xp) || pet.value.xp < 0) {
+      pet.value.xp = 0
+    }
+    if (typeof pet.value.level !== 'number' || isNaN(pet.value.level) || pet.value.level < 1) {
+      pet.value.level = 1
+    }
+    if (
+      typeof pet.value.xpToNextLevel !== 'number' ||
+      isNaN(pet.value.xpToNextLevel) ||
+      pet.value.xpToNextLevel <= 0
+    ) {
+      pet.value.xpToNextLevel = 100
+    }
+
     pet.value.xp += amount
-    while (pet.value.xp >= pet.value.xpToNextLevel) {
+
+    // Circuit breaker: prevent infinite loop if data was corrupted or math degenerates
+    let loopCount = 0
+    while (pet.value.xp >= pet.value.xpToNextLevel && loopCount < 500) {
+      loopCount++
       pet.value.xp -= pet.value.xpToNextLevel
       pet.value.level += 1
-      pet.value.xpToNextLevel = Math.round(pet.value.xpToNextLevel * 1.35)
+      const nextXp = Math.round(pet.value.xpToNextLevel * 1.35)
+      pet.value.xpToNextLevel = Math.max(50, isNaN(nextXp) ? 100 : nextXp)
 
       if (pet.value.soundEnabled) {
         playLevelUpSound(pet.value.soundVolume)
@@ -204,6 +268,12 @@ export const useGamificationStore = defineStore('gamification', () => {
 
       // Check level achievements
       trackAction({ type: 'pet_level_up', meta: { level: pet.value.level } })
+    }
+
+    // Failsafe: if loopCount reached breaker, cap xp to prevent future lock
+    if (loopCount >= 500) {
+      pet.value.xp = 0
+      console.warn('[GamificationStore] Pet XP leveling reached circuit breaker limit and was safely capped.')
     }
   }
 
@@ -458,6 +528,7 @@ export const useGamificationStore = defineStore('gamification', () => {
 
     // Actions
     trackAction,
+    awardPetXp,
     feedPet,
     petCompanion,
     setPetMood,

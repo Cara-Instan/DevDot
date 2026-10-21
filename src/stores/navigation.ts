@@ -143,7 +143,10 @@ export const useNavigationStore = defineStore('navigation', () => {
     try {
       const saved = localStorage.getItem('devdot_sidebar_collapsed')
       if (saved !== null) {
-        return JSON.parse(saved)
+        const parsed = JSON.parse(saved)
+        if (typeof parsed === 'boolean') {
+          return parsed
+        }
       }
     } catch {
       // ignore
@@ -166,15 +169,24 @@ export const useNavigationStore = defineStore('navigation', () => {
   const recents = ref<string[]>(loadRecents())
 
   function loadFavorites(): string[] {
+    const defaultFavorites = ['json-format', 'jwt-debugger', 'hash-generator']
     try {
       const saved = localStorage.getItem('devdot_favorites')
       if (saved) {
-        return JSON.parse(saved)
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter(
+            (id) => typeof id === 'string' && ALL_TOOLS.some((t) => t.id === id) && id !== 'system-overview'
+          )
+          if (valid.length > 0) {
+            return valid
+          }
+        }
       }
     } catch {
       // ignore
     }
-    return ['json-format', 'jwt-debugger', 'hash-generator']
+    return defaultFavorites
   }
 
   function saveFavorites() {
@@ -189,7 +201,12 @@ export const useNavigationStore = defineStore('navigation', () => {
     try {
       const saved = localStorage.getItem('devdot_recents')
       if (saved) {
-        return JSON.parse(saved)
+        const parsed = JSON.parse(saved)
+        if (Array.isArray(parsed)) {
+          return parsed
+            .filter((id) => typeof id === 'string' && ALL_TOOLS.some((t) => t.id === id) && id !== 'system-overview')
+            .slice(0, 6)
+        }
       }
     } catch {
       // ignore

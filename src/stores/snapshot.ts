@@ -11,7 +11,13 @@ function loadPersistedToolStates(): Record<string, Record<string, any>> {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        return parsed
+        const sanitized: Record<string, Record<string, any>> = {}
+        for (const [key, val] of Object.entries(parsed)) {
+          if (val && typeof val === 'object' && !Array.isArray(val)) {
+            sanitized[key] = val as Record<string, any>
+          }
+        }
+        return sanitized
       }
     }
   } catch (err) {
@@ -141,11 +147,26 @@ export const useSnapshotStore = defineStore('snapshot', () => {
   const isImporting = ref<boolean>(false)
   const isExporting = ref<boolean>(false)
 
-  function persistToStorage() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(toolStates.value))
-    } catch (err) {
-      console.warn('[SnapshotStore] Failed to persist tool states to localStorage:', err)
+  let persistTimer: any = null
+  function persistToStorage(immediate = false) {
+    const doPersist = () => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(toolStates.value))
+      } catch (err: any) {
+        if (err?.name === 'QuotaExceededError' || err?.code === 22) {
+          console.warn('[SnapshotStore] LocalStorage quota exceeded. Snapshot states cannot be fully cached in browser storage.')
+        } else {
+          console.warn('[SnapshotStore] Failed to persist tool states to localStorage:', err)
+        }
+      }
+    }
+
+    if (immediate) {
+      clearTimeout(persistTimer)
+      doPersist()
+    } else {
+      clearTimeout(persistTimer)
+      persistTimer = setTimeout(doPersist, 250)
     }
   }
 
@@ -153,7 +174,7 @@ export const useSnapshotStore = defineStore('snapshot', () => {
   watch(
     toolStates,
     () => {
-      persistToStorage()
+      persistToStorage(false)
     },
     { deep: true }
   )
@@ -162,25 +183,34 @@ export const useSnapshotStore = defineStore('snapshot', () => {
    * Set or update state for a specific tab and fallback tool
    */
   function setTabState(tabId: string, toolId: string, state: Record<string, any>) {
-    const existingTabState = toolStates.value[tabId] || toolStates.value[toolId] || {}
+    const existingTabState =
+      (toolStates.value[tabId] && typeof toolStates.value[tabId] === 'object')
+        ? toolStates.value[tabId]
+        : ((toolStates.value[toolId] && typeof toolStates.value[toolId] === 'object') ? toolStates.value[toolId] : {})
+
     const updated = {
       ...existingTabState,
       ...state
     }
     toolStates.value[tabId] = updated
     toolStates.value[toolId] = updated
-    persistToStorage()
+    // Debounced persist will automatically trigger via watcher
   }
 
   /**
    * Set or update state for a specific tool (backwards compatible)
    */
   function setToolState(toolId: string, state: Record<string, any>) {
+    const existingToolState =
+      toolStates.value[toolId] && typeof toolStates.value[toolId] === 'object'
+        ? toolStates.value[toolId]
+        : {}
+
     toolStates.value[toolId] = {
-      ...(toolStates.value[toolId] || {}),
+      ...existingToolState,
       ...state
     }
-    persistToStorage()
+    // Debounced persist will automatically trigger via watcher
   }
 
   /**

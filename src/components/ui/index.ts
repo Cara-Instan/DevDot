@@ -10,6 +10,7 @@ export { default as M3Tooltip } from './M3Tooltip.vue'
 export { default as SearchInput } from './SearchInput.vue'
 export { default as CopyButton } from './CopyButton.vue'
 export { default as FilterChips } from './FilterChips.vue'
+export { default as ErrorBoundary } from './ErrorBoundary.vue'
 
 export * from './M3Button.vue'
 export * from './M3TextField.vue'

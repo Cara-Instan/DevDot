@@ -17,7 +17,8 @@
     "test:security": "npx tsx scripts/verify-security-suite.ts",
     "test:native": "npx tsx scripts/verify-native-suite.ts",
     "test:pwa": "npx tsx scripts/verify-pwa-offline.ts",
-    "test:gamification": "npx tsx scripts/verify-gamification-suite.ts"
+    "test:gamification": "npx tsx scripts/verify-gamification-suite.ts",
+    "test:resilience": "npx tsx scripts/verify-corruption-resilience.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

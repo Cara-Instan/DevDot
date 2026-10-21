@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Download, RefreshCw, X } from 'lucide-vue-next'
+import { Download, RefreshCw, X, Loader2 } from 'lucide-vue-next'
 import appLogo from '@/assets/logo.png'
 import { usePwaStore } from '@/stores/pwa'
 import { M3Button } from '@/components/ui'
@@ -16,6 +16,10 @@ async function handleUpdate() {
 
 function handleDismiss() {
   pwaStore.dismissInstall(false)
+}
+
+function handleDismissUpdate() {
+  pwaStore.dismissUpdate()
 }
 
 function handleDontAskAgain() {
@@ -36,14 +40,24 @@ function handleDontAskAgain() {
             <span class="banner-title">Update Ready</span>
             <span class="banner-desc">New offline version cached and ready to use.</span>
           </div>
+          <button
+            type="button"
+            class="dismiss-btn"
+            aria-label="Dismiss update notice"
+            title="Dismiss"
+            @click="handleDismissUpdate"
+          >
+            <X :size="16" />
+          </button>
         </div>
 
         <div class="banner-actions update-actions">
-          <M3Button variant="filled" @click="handleUpdate">
+          <M3Button variant="filled" :disabled="pwaStore.isUpdating" @click="handleUpdate">
             <template #icon>
-              <RefreshCw :size="14" />
+              <Loader2 v-if="pwaStore.isUpdating" :size="14" class="spin-icon" />
+              <RefreshCw v-else :size="14" />
             </template>
-            Reload & Apply
+            {{ pwaStore.isUpdating ? 'Applying...' : 'Reload & Apply' }}
           </M3Button>
         </div>
       </div>

@@ -37,12 +37,49 @@ function loadSettingsFromStorage(): SettingsState {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY)
     if (raw) {
       const parsed = JSON.parse(raw)
-      return {
-        ...DEFAULT_SETTINGS,
-        ...parsed,
-        toolOrder: Array.isArray(parsed.toolOrder) && parsed.toolOrder.length > 0
-          ? parsed.toolOrder
-          : [...DEFAULT_TOOL_ORDER]
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const themeMode: ThemeMode =
+          parsed.themeMode === 'light' || parsed.themeMode === 'dark' || parsed.themeMode === 'system'
+            ? parsed.themeMode
+            : DEFAULT_SETTINGS.themeMode
+
+        const isHighContrast = typeof parsed.isHighContrast === 'boolean' ? parsed.isHighContrast : DEFAULT_SETTINGS.isHighContrast
+        const dontAskAgainInstallPrompt = typeof parsed.dontAskAgainInstallPrompt === 'boolean' ? parsed.dontAskAgainInstallPrompt : DEFAULT_SETTINGS.dontAskAgainInstallPrompt
+
+        const toolOrder =
+          Array.isArray(parsed.toolOrder) && parsed.toolOrder.length > 0
+            ? parsed.toolOrder.filter((id: unknown) => typeof id === 'string')
+            : [...DEFAULT_TOOL_ORDER]
+
+        const clipboardAutoPurgeSeconds =
+          typeof parsed.clipboardAutoPurgeSeconds === 'number' && !isNaN(parsed.clipboardAutoPurgeSeconds)
+            ? Math.min(300, Math.max(10, parsed.clipboardAutoPurgeSeconds))
+            : DEFAULT_SETTINGS.clipboardAutoPurgeSeconds
+
+        const editorFontSize =
+          typeof parsed.editorFontSize === 'number' && !isNaN(parsed.editorFontSize)
+            ? Math.min(24, Math.max(10, parsed.editorFontSize))
+            : DEFAULT_SETTINGS.editorFontSize
+
+        const editorWordWrap = typeof parsed.editorWordWrap === 'boolean' ? parsed.editorWordWrap : DEFAULT_SETTINGS.editorWordWrap
+        const smoothScrolling = typeof parsed.smoothScrolling === 'boolean' ? parsed.smoothScrolling : DEFAULT_SETTINGS.smoothScrolling
+
+        const scrollMultiplier =
+          typeof parsed.scrollMultiplier === 'number' && !isNaN(parsed.scrollMultiplier)
+            ? Math.min(3.0, Math.max(0.5, parsed.scrollMultiplier))
+            : DEFAULT_SETTINGS.scrollMultiplier
+
+        return {
+          themeMode,
+          isHighContrast,
+          dontAskAgainInstallPrompt,
+          toolOrder: toolOrder.length > 0 ? toolOrder : [...DEFAULT_TOOL_ORDER],
+          clipboardAutoPurgeSeconds,
+          editorFontSize,
+          editorWordWrap,
+          smoothScrolling,
+          scrollMultiplier
+        }
       }
     }
   } catch {

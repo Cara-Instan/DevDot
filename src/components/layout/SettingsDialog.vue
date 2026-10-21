@@ -567,17 +567,30 @@ const smoothScrolling = computed({
           <div class="setting-row">
             <div class="setting-meta">
               <h4>Check Offline Engine & Cache Updates</h4>
-              <p>Reload Service Worker and local caches to ensure latest air-gapped transforms.</p>
+              <p>Check for newer Service Worker versions and cache updates for air-gapped transforms.</p>
             </div>
-            <M3Button
-              variant="tonal"
-              @click="pwaStore.updateApp()"
-            >
-              <template #icon>
-                <RefreshCw :size="15" />
-              </template>
-              Update Cache
-            </M3Button>
+            <div class="action-buttons-group">
+              <M3Button
+                variant="tonal"
+                :disabled="pwaStore.isUpdating"
+                @click="pwaStore.updateApp()"
+              >
+                <template #icon>
+                  <RefreshCw :size="15" />
+                </template>
+                {{ pwaStore.needRefresh ? 'Apply Update' : 'Update Cache' }}
+              </M3Button>
+
+              <M3Button
+                variant="outlined"
+                @click="pwaStore.hardResetAppCaches()"
+              >
+                <template #icon>
+                  <RotateCcw :size="15" />
+                </template>
+                Force Clear & Reload
+              </M3Button>
+            </div>
           </div>
         </div>
 
@@ -972,6 +985,13 @@ const smoothScrolling = computed({
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
+}
+
+.action-buttons-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .setting-meta {
