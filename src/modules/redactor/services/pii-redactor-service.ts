@@ -400,7 +400,7 @@ export function analyzePii(
         }
 
         // Avoid zero-length infinite loop
-        if (originalValue.length === 0) {
+        if (originalValue.length === 0 || match[0].length === 0) {
           if (regex.lastIndex === match.index) {
             regex.lastIndex++
           }

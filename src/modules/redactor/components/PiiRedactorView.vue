@@ -445,27 +445,29 @@ function handleRedact(
     })
   }
 
-  // Save to snapshot store
-  if (!isHydrating) {
-    snapshotStore.setTabState(currentTabId.value, 'pii-redactor', {
-      inputText: inputText.value,
-      maskingMode: maskingMode.value,
-      customMask: customMask.value,
-      preserveLength: preserveLength.value,
-      activeRuleIds: activeRuleIds.value,
-      customRules: customRules.value,
-      splitDirection: splitDirection.value,
-      showStructural: showStructural.value,
-      structuralPanelHeight: structuralPanelHeight.value,
-      isPanelMaximized: isPanelMaximized.value,
-      activeBottomTab: activeBottomTab.value
-    })
-  }
 }
 
 let isHydrating = false
 
-// Debounced auto-redact
+// Debounced state persistence to snapshot store
+function persistSnapshot() {
+  if (isHydrating) return
+  snapshotStore.setTabState(currentTabId.value, 'pii-redactor', {
+    inputText: inputText.value,
+    maskingMode: maskingMode.value,
+    customMask: customMask.value,
+    preserveLength: preserveLength.value,
+    activeRuleIds: activeRuleIds.value,
+    customRules: customRules.value,
+    splitDirection: splitDirection.value,
+    showStructural: showStructural.value,
+    structuralPanelHeight: structuralPanelHeight.value,
+    isPanelMaximized: isPanelMaximized.value,
+    activeBottomTab: activeBottomTab.value
+  })
+}
+
+// Debounced auto-redact & persistence
 let debounceTimer: any = null
 function queueRedact(
   triggerOptions: { isAutomatic?: boolean; isMount?: boolean; isSample?: boolean } = { isAutomatic: true }
@@ -473,6 +475,7 @@ function queueRedact(
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(() => {
     handleRedact(triggerOptions)
+    persistSnapshot()
   }, 150)
 }
 
@@ -489,20 +492,7 @@ watch(
 watch(
   [splitDirection, showStructural, structuralPanelHeight, isPanelMaximized, activeBottomTab],
   () => {
-    if (isHydrating) return
-    snapshotStore.setTabState(currentTabId.value, 'pii-redactor', {
-      inputText: inputText.value,
-      maskingMode: maskingMode.value,
-      customMask: customMask.value,
-      preserveLength: preserveLength.value,
-      activeRuleIds: activeRuleIds.value,
-      customRules: customRules.value,
-      splitDirection: splitDirection.value,
-      showStructural: showStructural.value,
-      structuralPanelHeight: structuralPanelHeight.value,
-      isPanelMaximized: isPanelMaximized.value,
-      activeBottomTab: activeBottomTab.value
-    })
+    persistSnapshot()
   }
 )
 
@@ -512,23 +502,31 @@ watch(
   (newState) => {
     if (newState && !isHydrating) {
       isHydrating = true
+      let changed = false
+
       if (newState.inputText !== undefined && newState.inputText !== inputText.value) {
         inputText.value = newState.inputText
+        changed = true
       }
       if (newState.maskingMode && newState.maskingMode !== maskingMode.value) {
         maskingMode.value = newState.maskingMode
+        changed = true
       }
       if (newState.customMask !== undefined && newState.customMask !== customMask.value) {
         customMask.value = newState.customMask
+        changed = true
       }
       if (newState.preserveLength !== undefined && newState.preserveLength !== preserveLength.value) {
         preserveLength.value = newState.preserveLength
+        changed = true
       }
       if (Array.isArray(newState.activeRuleIds) && JSON.stringify(newState.activeRuleIds) !== JSON.stringify(activeRuleIds.value)) {
         activeRuleIds.value = [...newState.activeRuleIds]
+        changed = true
       }
       if (Array.isArray(newState.customRules) && JSON.stringify(newState.customRules) !== JSON.stringify(customRules.value)) {
         customRules.value = [...newState.customRules]
+        changed = true
       }
       if (newState.splitDirection && newState.splitDirection !== splitDirection.value) {
         splitDirection.value = newState.splitDirection
@@ -545,10 +543,11 @@ watch(
       if (newState.activeBottomTab && newState.activeBottomTab !== activeBottomTab.value) {
         activeBottomTab.value = newState.activeBottomTab
       }
-      nextTick(() => {
-        isHydrating = false
-        handleRedact()
-      })
+
+      if (changed) {
+        handleRedact({ isAutomatic: true })
+      }
+      isHydrating = false
     }
   },
   { deep: true }

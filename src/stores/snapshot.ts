@@ -188,6 +188,20 @@ export const useSnapshotStore = defineStore('snapshot', () => {
         ? toolStates.value[tabId]
         : ((toolStates.value[toolId] && typeof toolStates.value[toolId] === 'object') ? toolStates.value[toolId] : {})
 
+    // Guard against redundant mutations if state is identical
+    const hasChanges = Object.entries(state).some(([k, v]) => {
+      const existingVal = existingTabState[k]
+      if (existingVal === v) return false
+      if (typeof v === 'object' && v !== null && typeof existingVal === 'object' && existingVal !== null) {
+        return JSON.stringify(v) !== JSON.stringify(existingVal)
+      }
+      return true
+    })
+
+    if (!hasChanges && toolStates.value[tabId] && toolStates.value[toolId]) {
+      return
+    }
+
     const updated = {
       ...existingTabState,
       ...state
@@ -205,6 +219,20 @@ export const useSnapshotStore = defineStore('snapshot', () => {
       toolStates.value[toolId] && typeof toolStates.value[toolId] === 'object'
         ? toolStates.value[toolId]
         : {}
+
+    // Guard against redundant mutations if state is identical
+    const hasChanges = Object.entries(state).some(([k, v]) => {
+      const existingVal = existingToolState[k]
+      if (existingVal === v) return false
+      if (typeof v === 'object' && v !== null && typeof existingVal === 'object' && existingVal !== null) {
+        return JSON.stringify(v) !== JSON.stringify(existingVal)
+      }
+      return true
+    })
+
+    if (!hasChanges && toolStates.value[toolId]) {
+      return
+    }
 
     toolStates.value[toolId] = {
       ...existingToolState,
